@@ -12,7 +12,7 @@ Connection: close
 User-Agent: Pybrowser
     """
 
-    def __init__(self, url) -> None:
+    def __init__(self, url: str) -> None:
         self.url = url
         self.protocol, self.hostname, self.path, self.port = self.parse_url()
 
@@ -36,7 +36,7 @@ User-Agent: Pybrowser
         sock.close()
 
         return self.parse_http_response(response)
-    
+
     def _create_request_string(self, headers) -> str:
         """
         Create the request string with headers
@@ -50,10 +50,12 @@ User-Agent: Pybrowser
         for key, value in headers.items():
             request_string += "{}: {}\r\n".format(key, value)
         request_string += "\r\n"
-        print(request_string)
+
         return request_string
 
-    def parse_http_response(self, response: str) -> Tuple[int, DefaultDict[str, str], str]:
+    def parse_http_response(
+        self, response: str
+    ) -> Tuple[int, DefaultDict[str, str], str]:
         """
         Parse the http response and return status code, headers and body
         """
@@ -71,6 +73,7 @@ User-Agent: Pybrowser
         assert protcol in ALLOWED_PROTOCOLS
         if "/" in link:
             hostname, path = link.split("/", 1)
+            path = "/" + path
         else:
             hostname, path = link, "/"
 
@@ -84,11 +87,32 @@ User-Agent: Pybrowser
             path = "/"
 
         return protcol, hostname, path, port
-    
+
+    def get_html_text_content(self) -> str:
+        """
+        Parse the body from HTTP response and return the text content
+        Will move this to a separate module later
+        """
+        # Make the request
+        _, _, body = self.request()
+        in_tag = False
+        text_content = ""
+
+        for char in body:
+            if char == "<":
+                in_tag = True
+            elif char == ">":
+                in_tag = False
+            elif not in_tag:
+                text_content += char
+
+        return text_content
+
+
 def show_html(content):
-    '''
+    """
     Display the content of the html page
-    '''
+    """
     in_tag = False
     for char in content:
         if char == "<":
@@ -98,11 +122,13 @@ def show_html(content):
         elif not in_tag:
             print(char, end="")
 
+
 def main():
     url = Url("http://www.example.com/")
     status_code, headers, body = url.request()
     assert status_code == 200
     show_html(body)
+
 
 if __name__ == "__main__":
     main()
