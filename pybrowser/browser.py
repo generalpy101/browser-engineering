@@ -8,7 +8,7 @@ from typing import List, Optional
 from .css_parser import CSSParser, Rule, sort_rules, style
 from .html_parser import Element, HTMLParser, Node, Text
 from .js import JSRuntime, create_engine
-from .layout import DocumentLayout
+from .layout import DocumentLayout, set_base_url
 from .paint import DisplayCommand, paint_tree
 from .url import Url
 
@@ -97,6 +97,9 @@ class Browser:
         self._last_hover_result: Optional[str] = None
         self.js_runtime: Optional[JSRuntime] = None
         self._focused_input: Optional[Element] = None
+        self._zoom = 1.0
+        self._focusable_nodes: List[Element] = []
+        self._focus_idx = -1
 
         # -- bindings -------------------------------------------------------
         self.window.bind("<Down>", self._on_scroll_down)
@@ -105,6 +108,12 @@ class Browser:
         self.canvas.bind("<Button-1>", self._on_click)
         self.canvas.bind("<Motion>", self._on_hover)
         self.window.bind("<Key>", self._on_key)
+        self.window.bind("<Command-equal>", lambda e: self._zoom_in())
+        self.window.bind("<Command-minus>", lambda e: self._zoom_out())
+        self.window.bind("<Command-0>", lambda e: self._zoom_reset())
+        self.window.bind("<Control-equal>", lambda e: self._zoom_in())
+        self.window.bind("<Control-minus>", lambda e: self._zoom_out())
+        self.window.bind("<Control-0>", lambda e: self._zoom_reset())
         self._bind_mouse_wheel()
 
     # -- loading / rendering ------------------------------------------------
@@ -121,6 +130,7 @@ class Browser:
         self.window.update()
 
         self.current_url = Url(url)
+        set_base_url(self.current_url)
         body = self._fetch(url)
         self.dom = HTMLParser(body).parse()
         self.rules = self._collect_rules(self.dom)
@@ -138,8 +148,10 @@ class Browser:
             base_url=self.current_url,
         )
         self.js_runtime.run_scripts(self.dom, self.current_url)
+        self._collect_focusable()
 
         self._relayout()
+        self._schedule_timers()
 
     def _fetch(self, url: str) -> str:
         url_obj = Url(url)
@@ -427,6 +439,9 @@ class Browser:
     def _on_key(self, e: tkinter.Event) -> None:
         if e.widget == self.address_bar:
             return
+        if e.keysym == "Tab":
+            self._tab_focus(not (e.state & 0x1))
+            return
         if not self._focused_input:
             return
 
@@ -447,7 +462,11 @@ class Browser:
             self._focused_input = None
             node._focused = False
         elif e.keysym == "Tab":
-            pass
+            self._unfocus(node)
+            self._focused_input = None
+            node._focused = False
+            self._tab_focus(not (e.state & 0x1))
+            return
         elif e.keysym == "Escape":
             self._unfocus(node)
             self._focused_input = None
@@ -508,10 +527,85 @@ class Browser:
         if self.dom:
             style(self.dom, self.rules)
             self._relayout()
+            self._schedule_timers()
 
     @staticmethod
     def _on_console_log(*args: str) -> None:
         print("[console]", " ".join(str(a) for a in args))
+
+    # -- zoom ---------------------------------------------------------------
+
+    def _zoom_in(self) -> None:
+        self._zoom = min(self._zoom + 0.1, 3.0)
+        self._on_js_mutate()
+
+    def _zoom_out(self) -> None:
+        self._zoom = max(self._zoom - 0.1, 0.3)
+        self._on_js_mutate()
+
+    def _zoom_reset(self) -> None:
+        self._zoom = 1.0
+        self._on_js_mutate()
+
+    # -- tab navigation -----------------------------------------------------
+
+    def _collect_focusable(self) -> None:
+        self._focusable_nodes = []
+        self._focus_idx = -1
+        if not self.dom:
+            return
+        for el in self._iter_elements(self.dom):
+            if el.tag in ("a", "button", "input", "textarea", "select"):
+                self._focusable_nodes.append(el)
+
+    def _tab_focus(self, forward: bool = True) -> None:
+        if not self._focusable_nodes:
+            return
+        if forward:
+            self._focus_idx = (self._focus_idx + 1) % len(self._focusable_nodes)
+        else:
+            self._focus_idx = (self._focus_idx - 1) % len(self._focusable_nodes)
+        node = self._focusable_nodes[self._focus_idx]
+
+        if self._focused_input:
+            self._unfocus(self._focused_input)
+
+        if node.tag in ("input", "textarea"):
+            self._focus_input(node)
+        else:
+            node._focused = True
+            self._on_js_mutate()
+
+    # -- event loop / timers ------------------------------------------------
+
+    def _schedule_timers(self) -> None:
+        if not self.js_runtime:
+            return
+        for kind, fn, ms, tid in self.js_runtime.get_pending_timers():
+            delay = max(int(ms), 10)
+            if kind == "timeout":
+                self.window.after(delay, lambda f=fn: self._run_timer(f))
+            elif kind == "interval":
+                self._run_interval(fn, delay)
+
+    def _run_timer(self, fn: object) -> None:
+        if self.js_runtime:
+            try:
+                from .js.engine import ToyJSEngine
+                from .js.interpreter import JSFunction, NativeFunction
+                if isinstance(self.js_runtime.engine, ToyJSEngine):
+                    if isinstance(fn, (JSFunction, NativeFunction)):
+                        self.js_runtime.engine.interp._call(fn, [], self.js_runtime.engine.interp.global_env)
+                else:
+                    pass
+            except Exception:
+                pass
+
+    def _run_interval(self, fn: object, ms: int) -> None:
+        def tick():
+            self._run_timer(fn)
+            self.window.after(ms, tick)
+        self.window.after(ms, tick)
 
     # -- scroll handlers ----------------------------------------------------
 

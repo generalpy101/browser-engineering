@@ -88,7 +88,26 @@ class DrawLine:
         )
 
 
-DisplayCommand = Union[DrawText, DrawRect, DrawOutline, DrawLine]
+class DrawImage:
+    def __init__(self, x: float, y: float, width: float, height: float,
+                 image: object, node: object = None) -> None:
+        self.top = y
+        self.left = x
+        self.right = x + width
+        self.bottom = y + height
+        self.image = image
+        self.node = node
+        self._tk_image = None
+
+    def execute(self, scroll: int, canvas: object) -> None:
+        if self.image:
+            canvas.create_image(
+                self.left, self.top - scroll,
+                image=self.image, anchor="nw",
+            )
+
+
+DisplayCommand = Union[DrawText, DrawRect, DrawOutline, DrawLine, DrawImage]
 
 
 def paint_tree(layout_obj: object, display_list: List[DisplayCommand]) -> None:

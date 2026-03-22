@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import io
 import tkinter
 import tkinter.font
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .html_parser import Element, Node, Text
 
@@ -15,6 +16,31 @@ BLOCK_ELEMENTS = frozenset([
 ])
 
 _font_cache: dict = {}
+_image_cache: Dict[str, Any] = {}
+_base_url_ref: list = [None]
+
+
+def set_base_url(url: Any) -> None:
+    _base_url_ref[0] = url
+
+
+def _load_image(src: str) -> Any:
+    """Load an image from a URL and return a tkinter PhotoImage, or None."""
+    if src in _image_cache:
+        return _image_cache[src]
+    try:
+        from .url import Url
+        base = _base_url_ref[0]
+        resolved = base.resolve(src) if base else src
+        data = Url(resolved).fetch_binary()
+        from PIL import Image, ImageTk
+        img = Image.open(io.BytesIO(data))
+        tk_img = ImageTk.PhotoImage(img)
+        _image_cache[src] = tk_img
+        return tk_img
+    except Exception:
+        _image_cache[src] = None
+        return None
 
 
 def get_font(size: int, weight: str, style: str, family: str) -> tkinter.font.Font:
@@ -305,6 +331,9 @@ class InlineLayout:
             elif node.tag == "button":
                 self._layout_button(node)
                 return
+            elif node.tag == "img":
+                self._layout_image(node)
+                return
             for child in node.children:
                 self._walk(child)
 
@@ -380,6 +409,42 @@ class InlineLayout:
                 label += child.text.strip()
         label = label or "Button"
         self._place_widget(label, font, "#333", node, "button")
+
+    def _layout_image(self, node: Element) -> None:
+        src = node.attributes.get("src", "")
+        if not src:
+            return
+        tk_img = _load_image(src)
+        if tk_img:
+            w = tk_img.width()
+            h = tk_img.height()
+        else:
+            w, h = 20, 20
+        attr_w = node.attributes.get("width")
+        attr_h = node.attributes.get("height")
+        if attr_w:
+            try:
+                w = int(attr_w)
+            except ValueError:
+                pass
+        if attr_h:
+            try:
+                h = int(attr_h)
+            except ValueError:
+                pass
+        if tk_img and attr_w and not attr_h:
+            h = int(tk_img.height() * w / max(tk_img.width(), 1))
+        if tk_img and attr_h and not attr_w:
+            w = int(tk_img.width() * h / max(tk_img.height(), 1))
+
+        if self._cursor_x + w > self.x + self.width and self._current_line:
+            self._flush_line()
+        node._img = tk_img
+        node._img_w = w
+        node._img_h = h
+        node._widget_type = "image"
+        self._current_line.append((self._cursor_x, "", None, "", node))
+        self._cursor_x += w
 
     def _place_widget(self, text: str, font: tkinter.font.Font,
                       color: str, node: Element, widget_type: str) -> None:
@@ -484,9 +549,19 @@ class TextLayout:
         self.color = color
 
     def paint(self) -> list:
-        from .paint import DrawOutline, DrawRect, DrawText
+        from .paint import DrawImage, DrawOutline, DrawRect, DrawText
         cmds = []
         widget_type = getattr(self.node, "_widget_type", None)
+        if widget_type == "image":
+            tk_img = getattr(self.node, "_img", None)
+            w = getattr(self.node, "_img_w", 20)
+            h = getattr(self.node, "_img_h", 20)
+            if tk_img:
+                cmds.append(DrawImage(self.x, self.y, w, h, tk_img, self.node))
+            else:
+                cmds.append(DrawRect(self.x, self.y, self.x + w, self.y + h, "#ddd", self.node))
+                cmds.append(DrawOutline(self.x, self.y, self.x + w, self.y + h, "#999", 1, self.node))
+            return cmds
         if widget_type:
             w = getattr(self.node, "_widget_width", self.width)
             h = self.font.metrics("linespace") + 8
