@@ -546,9 +546,10 @@ ws.close();</pre>
     <p>
         <input type="text" id="ws-input" placeholder="Type a message..." size="30">
         <button id="btn-ws-send">Send via WebSocket</button>
+        <button id="btn-ws-close">Disconnect</button>
     </p>
     <p id="ws-output">WebSocket status: not connected</p>
-    <p><small>Note: requires a WebSocket echo server. Try <code>wss://ws.postman-echo.com/raw</code></small></p>
+    <p><small>Start the echo server: <code>python test-site/ws_server.py</code> (runs on ws://localhost:8765/)</small></p>
 </div>
 
 <div class="test-box">
@@ -822,9 +823,9 @@ document.getElementById("btn-ws-send").addEventListener("click", function() {
     var msg = document.getElementById("ws-input").getAttribute("value") || "hello";
     var out = document.getElementById("ws-output");
     if (!wsConn) {
-        out.textContent = "Connecting...";
+        out.textContent = "Connecting to ws://localhost:8765/ ...";
         try {
-            wsConn = new WebSocket("wss://ws.postman-echo.com/raw");
+            wsConn = new WebSocket("ws://localhost:8765/");
             wsConn.onopen = function() {
                 out.textContent = "Connected! Sending: " + msg;
                 wsConn.send(msg);
@@ -833,18 +834,30 @@ document.getElementById("btn-ws-send").addEventListener("click", function() {
                 out.textContent = "Echo received: " + e.data;
             };
             wsConn.onerror = function() {
-                out.textContent = "WebSocket error (server may be unavailable)";
+                out.textContent = "WebSocket error -- is ws_server.py running?";
+                wsConn = null;
             };
             wsConn.onclose = function() {
-                out.textContent = out.textContent + " [closed]";
+                out.textContent = out.textContent + " [disconnected]";
                 wsConn = null;
             };
         } catch(e) {
-            out.textContent = "WebSocket not available: " + e;
+            out.textContent = "WebSocket error: " + e;
         }
     } else {
         wsConn.send(msg);
-        out.textContent = "Sent: " + msg;
+        out.textContent = "Sent: " + msg + " (waiting for echo...)";
+    }
+});
+
+document.getElementById("btn-ws-close").addEventListener("click", function() {
+    var out = document.getElementById("ws-output");
+    if (wsConn) {
+        wsConn.close();
+        wsConn = null;
+        out.textContent = "Disconnected";
+    } else {
+        out.textContent = "Not connected";
     }
 });
 
