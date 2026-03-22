@@ -106,6 +106,28 @@ class CookieJar:
 # URL class
 # ---------------------------------------------------------------------------
 
+def _read_chunked(stream) -> bytes:
+    body = bytearray()
+    while True:
+        line = stream.readline()
+        if not line:
+            break
+        size_str = line.strip()
+        if not size_str:
+            continue
+        try:
+            chunk_size = int(size_str, 16)
+        except ValueError:
+            break
+        if chunk_size == 0:
+            stream.readline()
+            break
+        chunk = stream.read(chunk_size)
+        body.extend(chunk)
+        stream.readline()
+    return bytes(body)
+
+
 def _decompress(data: bytes, encoding: str) -> str:
     try:
         if "gzip" in encoding:
@@ -167,7 +189,15 @@ class Url:
                 CookieJar.get().set_from_header(self.hostname, value.strip())
             response_headers[key] = value.strip()
 
-        raw_body = raw.read()
+        transfer = response_headers.get("transfer-encoding", "")
+        content_len = response_headers.get("content-length", "")
+
+        if "chunked" in transfer:
+            raw_body = _read_chunked(raw)
+        elif content_len:
+            raw_body = raw.read(int(content_len))
+        else:
+            raw_body = raw.read()
         sock.close()
 
         encoding = response_headers.get("content-encoding", "")
