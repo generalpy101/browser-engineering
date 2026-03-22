@@ -384,13 +384,11 @@ class InlineLayout:
             label = node.attributes.get("value", "Submit")
             self._place_widget(label, font, "#333", node, "submit")
         elif input_type == "checkbox":
-            checked = "checked" in node.attributes
-            label = "\u2611" if checked else "\u2610"
-            self._place_widget(label, font, "#333", node, "checkbox")
+            node._checked = "checked" in node.attributes
+            self._place_widget("", font, "#333", node, "checkbox")
         elif input_type == "radio":
-            checked = "checked" in node.attributes
-            label = "\u25c9" if checked else "\u25cb"
-            self._place_widget(label, font, "#333", node, "radio")
+            node._checked = "checked" in node.attributes
+            self._place_widget("", font, "#333", node, "radio")
         else:
             value = node.attributes.get("value", "")
             placeholder = node.attributes.get("placeholder", "")
@@ -451,7 +449,7 @@ class InlineLayout:
     def _place_widget(self, text: str, font: Any,
                       color: str, node: Element, widget_type: str) -> None:
         if widget_type in ("checkbox", "radio"):
-            w = font.measure(text) + 4
+            w = 18
         elif widget_type == "input":
             char_w = getattr(node, "_input_char_width", 20)
             w = max(font.measure("m") * char_w, font.measure(text) + 16)
@@ -590,8 +588,24 @@ class TextLayout:
                 border = "#4488ff" if focused else "#aaa"
                 cmds.append(DrawOutline(self.x, y, self.x + w, y + h, border, 1, n))
                 cmds.append(DrawText(self.x + 8, self.y, self.word, self.font, "#333", n))
-            elif widget_type in ("checkbox", "radio"):
-                cmds.append(DrawText(self.x, self.y, self.word, self.font, "#333", n))
+            elif widget_type == "checkbox":
+                checked = getattr(n, "_checked", False)
+                bx, by = self.x + 1, self.y + 2
+                bs = 14
+                cmds.append(DrawRect(bx, by, bx + bs, by + bs, "#ffffff", n))
+                cmds.append(DrawOutline(bx, by, bx + bs, by + bs, "#666666", 1, n))
+                if checked:
+                    from .paint import DrawLine
+                    cmds.append(DrawLine(bx + 3, by + 7, bx + 6, by + 11, "#333333", 2))
+                    cmds.append(DrawLine(bx + 6, by + 11, bx + 11, by + 3, "#333333", 2))
+            elif widget_type == "radio":
+                checked = getattr(n, "_checked", False)
+                bx, by = self.x + 1, self.y + 2
+                bs = 14
+                cmds.append(DrawRect(bx, by, bx + bs, by + bs, "#ffffff", n))
+                cmds.append(DrawOutline(bx, by, bx + bs, by + bs, "#666666", 1, n))
+                if checked:
+                    cmds.append(DrawRect(bx + 3, by + 3, bx + bs - 3, by + bs - 3, "#333333", n))
             else:
                 cmds.append(DrawRect(self.x, y, self.x + w, y + h, "white", n))
                 border = "#4488ff" if focused else "#bbb"

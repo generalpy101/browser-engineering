@@ -68,6 +68,8 @@ class HTMLParser:
         self.body = body
         self.unfinished: List[Element] = []
 
+    RAWTEXT_TAGS = frozenset(["script", "style"])
+
     def parse(self) -> Element:
         text = ""
         in_tag = False
@@ -81,8 +83,20 @@ class HTMLParser:
                 text = ""
             elif c == ">":
                 in_tag = False
-                self._add_tag(text)
+                tag_text = text
+                self._add_tag(tag_text)
                 text = ""
+                tag_name = tag_text.split(None, 1)[0].casefold() if tag_text else ""
+                if tag_name in self.RAWTEXT_TAGS:
+                    close_tag = f"</{tag_name}>"
+                    end = self.body.lower().find(close_tag, i + 1)
+                    if end == -1:
+                        end = len(self.body)
+                    raw = self.body[i + 1 : end]
+                    if raw:
+                        self._add_text(raw)
+                    i = end
+                    continue
             else:
                 text += c
             i += 1

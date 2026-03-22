@@ -1,6 +1,7 @@
 """Browser shell -- SDL2 window, event loop, chrome, page rendering."""
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
@@ -83,6 +84,9 @@ class Browser:
         self._chrome_font = self.renderer.get_font(14, "normal", "roman", "Helvetica")
         self._loading = False
 
+        self._timers: list = []
+        self._alert_text: Optional[str] = None
+
     # -- main event loop ----------------------------------------------------
 
     def run(self) -> None:
@@ -110,6 +114,7 @@ class Browser:
                     if self.document:
                         self._relayout()
 
+            self._tick_timers()
             self._draw()
             sdl2.SDL_Delay(16)
 
@@ -138,9 +143,11 @@ class Browser:
             engine=create_engine(self._js_engine_pref),
             on_mutate=self._on_js_mutate,
             on_log=self._on_console_log,
+            on_alert=self._on_alert,
             base_url=self.current_url,
         )
         self.js_runtime.run_scripts(self.dom, self.current_url)
+        self._collect_timers()
         self._loading = False
 
         self.renderer.flush_text_cache()
@@ -241,6 +248,7 @@ class Browser:
             f = self.renderer.get_font(18, "normal", "roman", "Helvetica")
             self.renderer.draw_text(self.width // 2 - 40, self.height // 2, "Loading...", f, "#888888")
 
+        self._draw_alert()
         self.renderer.present()
 
     def _draw_scrollbar(self) -> None:
@@ -285,6 +293,75 @@ class Browser:
             cursor_x = addr_x + 6 + f.measure(text[:self._address_cursor])
             r.draw_line(cursor_x, addr_y + 3, cursor_x, addr_y + addr_h - 3, "#333333", 1)
 
+    def _draw_alert(self) -> None:
+        if self._alert_text is None:
+            return
+        r = self.renderer
+        overlay_w = min(400, self.width - 40)
+        overlay_h = 120
+        ox = (self.width - overlay_w) // 2
+        oy = (self.height - overlay_h) // 2
+
+        r.draw_rect(0, 0, self.width, self.height, "#00000088")
+        r.draw_rect(ox, oy, overlay_w, overlay_h, "#ffffff")
+        r.draw_outline(ox, oy, overlay_w, overlay_h, "#333333", 2)
+
+        f = self.renderer.get_font(15, "normal", "roman", "Helvetica")
+        r.draw_text(ox + 20, oy + 20, self._alert_text[:60], f, "#333333")
+
+        btn_w, btn_h = 60, 28
+        bx = ox + (overlay_w - btn_w) // 2
+        by = oy + overlay_h - btn_h - 15
+        r.draw_rect(bx, by, btn_w, btn_h, "#4488ff")
+        r.draw_text(bx + 18, by + 5, "OK", f, "#ffffff")
+
+    # -- timers -------------------------------------------------------------
+
+    def _collect_timers(self) -> None:
+        if not self.js_runtime:
+            return
+        now = time.monotonic()
+        for kind, fn, ms, tid in self.js_runtime.get_pending_timers():
+            fire_at = now + ms / 1000.0
+            self._timers.append((kind, fn, ms, fire_at))
+
+    def _tick_timers(self) -> None:
+        if not self._timers or not self.js_runtime:
+            return
+        now = time.monotonic()
+        still_pending = []
+        fired = False
+        for kind, fn, ms, fire_at in self._timers:
+            if now >= fire_at:
+                self._fire_timer(fn)
+                fired = True
+                if kind == "interval":
+                    still_pending.append((kind, fn, ms, now + ms / 1000.0))
+            else:
+                still_pending.append((kind, fn, ms, fire_at))
+        self._timers = still_pending
+        if fired:
+            self._collect_timers()
+            self._on_js_mutate()
+
+    def _fire_timer(self, fn: object) -> None:
+        if not self.js_runtime:
+            return
+        rt = self.js_runtime
+        if rt._is_native:
+            pass
+        else:
+            try:
+                from .js.engine import ToyJSEngine
+                from .js.interpreter import JSFunction, NativeFunction
+                if isinstance(rt.engine, ToyJSEngine) and isinstance(fn, (JSFunction, NativeFunction)):
+                    rt.engine.interp._call(fn, [], rt.engine.interp.global_env)
+            except Exception:
+                pass
+
+    def _on_alert(self, msg: str) -> None:
+        self._alert_text = str(msg)
+
     def _clamp_scroll(self) -> None:
         max_scroll = max(0, self.max_y - (self.height - CHROME_HEIGHT))
         self.scroll = max(0, min(self.scroll, max_scroll))
@@ -317,6 +394,9 @@ class Browser:
     # -- event handling -----------------------------------------------------
 
     def _handle_click(self, x: int, y: int) -> None:
+        if self._alert_text is not None:
+            self._alert_text = None
+            return
         if y < CHROME_HEIGHT:
             self._handle_chrome_click(x, y)
             return
@@ -384,6 +464,9 @@ class Browser:
         self._clamp_scroll()
 
     def _handle_keydown(self, event: dict) -> None:
+        if self._alert_text is not None:
+            self._alert_text = None
+            return
         sym = event["sym"]
         mod = event["mod"]
         name = event.get("name", "")

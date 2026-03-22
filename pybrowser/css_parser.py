@@ -542,6 +542,10 @@ def style(node: Node, rules: List[Rule]) -> None:
             for prop, val in body.items():
                 node.style[prop] = val
 
+    if hasattr(node, "_js_style"):
+        for prop, val in node._js_style.items():
+            node.style[prop] = val
+
     _inherit(node)
     _resolve_units(node)
 

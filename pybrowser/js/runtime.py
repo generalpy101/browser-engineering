@@ -32,11 +32,13 @@ class JSRuntime:
     def __init__(self, dom: Element, engine: Optional[JSEngine] = None,
                  on_mutate: Optional[Callable] = None,
                  on_log: Optional[Callable] = None,
+                 on_alert: Optional[Callable] = None,
                  base_url: Any = None) -> None:
         self.dom = dom
         self.engine = engine or create_engine()
         self._on_mutate = on_mutate
         self._on_log = on_log or (lambda *a: print("[console]", *a))
+        self._on_alert = on_alert or (lambda msg: print("[alert]", msg))
         self._handles: Dict[int, Node] = {}
         self._node_to_handle: Dict[int, int] = {}
         self._next_handle = 1
@@ -124,7 +126,7 @@ class JSRuntime:
         self._on_log(*[str(a) for a in args])
 
     def _py_alert(self, msg=""):
-        self._on_log("[alert]", str(msg))
+        self._on_alert(str(msg))
 
     def _py_get_element_by_id(self, id_val):
         node = self._find_by_id(self.dom, str(id_val))
@@ -237,8 +239,10 @@ class JSRuntime:
 
     def _py_set_style(self, handle, prop, value):
         node = self._get_node(handle)
-        if isinstance(node, Element) and hasattr(node, "style"):
-            node.style[str(prop)] = str(value)
+        if isinstance(node, Element):
+            if not hasattr(node, "_js_style"):
+                node._js_style = {}
+            node._js_style[str(prop)] = str(value)
             self._signal_mutation()
 
     def _py_classlist_op(self, handle, op, name):
@@ -383,7 +387,7 @@ class JSRuntime:
             "error": NativeFunction("error", lambda *a: self._on_log("[error]", *(_to_js_string(v) for v in a))),
         })
         e.set_global("console", console)
-        e.set_native_fn("alert", lambda msg="": self._on_log("[alert]", _to_js_string(msg)))
+        e.set_native_fn("alert", lambda msg="": self._on_alert(_to_js_string(msg)))
         e.set_global("document", self._make_document_toy())
         e.set_global("window", self._make_window_toy())
         e.set_global("localStorage", self._make_storage_toy(self._load_storage, self._save_storage))
@@ -589,8 +593,10 @@ class JSRuntime:
             self._signal_mutation()
 
     def _set_style_node(self, node, prop, value):
-        if isinstance(node, Element) and hasattr(node, "style"):
-            node.style[str(prop)] = str(value)
+        if isinstance(node, Element):
+            if not hasattr(node, "_js_style"):
+                node._js_style = {}
+            node._js_style[str(prop)] = str(value)
             self._signal_mutation()
 
     # ======================================================================
