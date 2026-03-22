@@ -579,12 +579,16 @@ class NativeFunction:
 # ---------------------------------------------------------------------------
 
 class JSObject(dict):
-    """A dict subclass that supports prototype chain lookup."""
+    """A dict subclass that supports prototype chain lookup and property setters."""
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
         self._proto: Optional[dict] = None
+        self._setters: Dict[str, Callable] = {}
+        self._getters: Dict[str, Callable] = {}
 
     def js_get(self, key: str) -> Any:
+        if key in self._getters:
+            return self._getters[key]()
         if key in self:
             return self[key]
         if self._proto:
@@ -592,6 +596,12 @@ class JSObject(dict):
                 return self._proto.js_get(key)
             return self._proto.get(key, JS_UNDEFINED)
         return JS_UNDEFINED
+
+    def js_set(self, key: str, value: Any) -> None:
+        if key in self._setters:
+            self._setters[key](value)
+        else:
+            self[key] = value
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +900,9 @@ class Interpreter:
         elif target["_k"] == "Member":
             obj = self._eval(target["obj"], env)
             key = self._member_key(target, env)
-            if isinstance(obj, (dict, JSObject)):
+            if isinstance(obj, JSObject):
+                obj.js_set(key, value)
+            elif isinstance(obj, dict):
                 obj[key] = value
             elif isinstance(obj, list) and isinstance(key, (int, float)):
                 idx = int(key)

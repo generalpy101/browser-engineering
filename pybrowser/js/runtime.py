@@ -430,8 +430,39 @@ class JSRuntime:
         elif isinstance(node, Text):
             obj["tagName"] = ""
             obj["nodeType"] = 3
-        obj["textContent"] = self._get_text_content_str(node)
-        obj["innerHTML"] = self._get_inner_html_str(node) if isinstance(node, Element) else ""
+
+        obj._getters["textContent"] = lambda: self._get_text_content_str(node)
+        obj._getters["innerHTML"] = lambda: self._get_inner_html_str(node) if isinstance(node, Element) else ""
+
+        def _set_text_content(val):
+            if isinstance(node, Element):
+                t = Text(str(val), node)
+                t.style = {}
+                node.children = [t]
+                self._signal_mutation()
+            elif isinstance(node, Text):
+                node.text = str(val)
+                self._signal_mutation()
+
+        def _set_inner_html(val):
+            if isinstance(node, Element):
+                from ..html_parser import HTMLParser
+                frag = HTMLParser(str(val)).parse()
+                body = None
+                for c in frag.children:
+                    if isinstance(c, Element) and c.tag == "body":
+                        body = c
+                        break
+                children = body.children if body else frag.children
+                for c in children:
+                    c.parent = node
+                node.children = list(children)
+                self._signal_mutation()
+
+        obj._setters["textContent"] = _set_text_content
+        obj._setters["innerHTML"] = _set_inner_html
+        obj._setters["className"] = lambda v: (node.attributes.__setitem__("class", str(v)), self._signal_mutation()) if isinstance(node, Element) else None
+
         obj["parentNode"] = NativeFunction("parentNode", lambda: self._wrap_node_toy(node.parent))
         obj["getAttribute"] = NativeFunction("getAttribute",
             lambda name: node.attributes.get(name, None) if isinstance(node, Element) else None)
@@ -681,6 +712,11 @@ class JSRuntime:
         tid = len(self._timers) + 1
         self._timers.append(("interval", fn, ms, tid))
         return tid
+
+    def get_pending_timers(self):
+        timers = list(self._timers)
+        self._timers = [t for t in self._timers if t[0] == "interval"]
+        return timers
 
     # -- script execution ---------------------------------------------------
 

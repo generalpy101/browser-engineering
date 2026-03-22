@@ -1,20 +1,23 @@
-import sys
-import time
-import tkinter
-import tkinter.font
+"""Browser shell -- SDL2 window, event loop, chrome, page rendering."""
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
+
+import sdl2
 
 from .css_parser import CSSParser, Rule, sort_rules, style
 from .html_parser import Element, HTMLParser, Node, Text
 from .js import JSRuntime, create_engine
-from .layout import DocumentLayout, set_base_url
+from .layout import DocumentLayout, set_base_url, set_renderer
 from .paint import DisplayCommand, paint_tree
+from .renderer import SDLRenderer
 from .url import Url
 
 INITIAL_WIDTH, INITIAL_HEIGHT = 1200, 900
-SCROLL_STEP = 100
-SCROLLBAR_WIDTH = 10
+SCROLL_STEP = 60
+CHROME_HEIGHT = 36
+SCROLLBAR_WIDTH = 8
 
 DEFAULT_STYLESHEET = """
 head { display: none; }
@@ -53,81 +56,72 @@ hr { margin-top: 8px; margin-bottom: 8px; }
 class Browser:
     def __init__(self, js_engine: str = "auto") -> None:
         self._js_engine_pref = js_engine
-        self.window = tkinter.Tk()
-        self.window.title("Pybrowser")
-
         self.width = INITIAL_WIDTH
         self.height = INITIAL_HEIGHT
 
-        # -- browser chrome (top bar) --------------------------------------
-        chrome = tkinter.Frame(self.window, bg="#ececec", pady=4)
-        chrome.pack(side="top", fill="x")
+        self.renderer = SDLRenderer(self.width, self.height, "Pybrowser")
+        set_renderer(self.renderer)
 
-        self.back_btn = tkinter.Button(
-            chrome, text="\u2190", command=self._go_back, width=3,
-        )
-        self.back_btn.pack(side="left", padx=(6, 2))
-
-        self.forward_btn = tkinter.Button(
-            chrome, text="\u2192", command=self._go_forward, width=3,
-        )
-        self.forward_btn.pack(side="left", padx=2)
-
-        self.address_bar = tkinter.Entry(chrome, font=("Helvetica", 14))
-        self.address_bar.pack(side="left", fill="x", expand=True, padx=6)
-        self.address_bar.bind("<Return>", self._on_address_enter)
-
-        # -- canvas ---------------------------------------------------------
-        self.canvas = tkinter.Canvas(
-            self.window, width=self.width, height=self.height, bg="white",
-        )
-        self.canvas.pack(fill="both", expand=True)
-
-        # -- state ----------------------------------------------------------
         self.scroll = 0
         self.max_y = 0
         self.display_list: List[DisplayCommand] = []
         self.document: Optional[DocumentLayout] = None
         self.dom: Optional[Element] = None
+        self.rules: List[Rule] = []
         self.current_url: Optional[Url] = None
         self.history: List[str] = []
         self.forward_stack: List[str] = []
-        self._body_bg = "white"
-        self._last_hover_time = 0.0
-        self._last_hover_result: Optional[str] = None
+        self._body_bg = "#ffffff"
         self.js_runtime: Optional[JSRuntime] = None
         self._focused_input: Optional[Element] = None
         self._zoom = 1.0
-        self._focusable_nodes: List[Element] = []
-        self._focus_idx = -1
 
-        # -- bindings -------------------------------------------------------
-        self.window.bind("<Down>", self._on_scroll_down)
-        self.window.bind("<Up>", self._on_scroll_up)
-        self.window.bind("<Configure>", self._on_resize)
-        self.canvas.bind("<Button-1>", self._on_click)
-        self.canvas.bind("<Motion>", self._on_hover)
-        self.window.bind("<Key>", self._on_key)
-        self.window.bind("<Command-equal>", lambda e: self._zoom_in())
-        self.window.bind("<Command-minus>", lambda e: self._zoom_out())
-        self.window.bind("<Command-0>", lambda e: self._zoom_reset())
-        self.window.bind("<Control-equal>", lambda e: self._zoom_in())
-        self.window.bind("<Control-minus>", lambda e: self._zoom_out())
-        self.window.bind("<Control-0>", lambda e: self._zoom_reset())
-        self._bind_mouse_wheel()
+        self._address_text = ""
+        self._address_focused = False
+        self._address_cursor = 0
+
+        self._chrome_font = self.renderer.get_font(14, "normal", "roman", "Helvetica")
+        self._loading = False
+
+    # -- main event loop ----------------------------------------------------
+
+    def run(self) -> None:
+        running = True
+        while running:
+            for event in self.renderer.poll_events():
+                etype = event["type"]
+                if etype == "quit":
+                    running = False
+                elif etype == "click":
+                    self._handle_click(event["x"], event["y"])
+                elif etype == "motion":
+                    pass
+                elif etype == "scroll":
+                    self._handle_scroll(event["y"])
+                elif etype == "keydown":
+                    self._handle_keydown(event)
+                elif etype == "textinput":
+                    self._handle_textinput(event["text"])
+                elif etype == "resize":
+                    self.width = event["w"]
+                    self.height = event["h"]
+                    self.renderer.width = self.width
+                    self.renderer.height = self.height
+                    if self.document:
+                        self._relayout()
+
+            self._draw()
+            sdl2.SDL_Delay(16)
+
+        self.renderer.destroy()
 
     # -- loading / rendering ------------------------------------------------
 
     def load(self, url: str) -> None:
-        self.address_bar.delete(0, tkinter.END)
-        self.address_bar.insert(0, url)
-
-        self.canvas.delete("all")
-        self.canvas.create_text(
-            self.width / 2, self.height / 2,
-            text="Loading...", font=("Helvetica", 18), fill="gray",
-        )
-        self.window.update()
+        self._address_text = url
+        self._address_focused = False
+        self._loading = True
+        self._draw()
 
         self.current_url = Url(url)
         set_base_url(self.current_url)
@@ -137,8 +131,7 @@ class Browser:
         style(self.dom, self.rules)
 
         self._body_bg = self._find_body_bg()
-        self.canvas.configure(bg=self._body_bg)
-        self.window.title("Pybrowser - " + url)
+        self.renderer.set_title("Pybrowser - " + url)
 
         self.js_runtime = JSRuntime(
             self.dom,
@@ -148,10 +141,10 @@ class Browser:
             base_url=self.current_url,
         )
         self.js_runtime.run_scripts(self.dom, self.current_url)
-        self._collect_focusable()
+        self._loading = False
 
+        self.renderer.flush_text_cache()
         self._relayout()
-        self._schedule_timers()
 
     def _fetch(self, url: str) -> str:
         url_obj = Url(url)
@@ -173,7 +166,6 @@ class Browser:
                             page_rules.extend(CSSParser(child.text).parse())
                         except Exception:
                             pass
-
             if node.tag == "link" and node.attributes.get("rel") == "stylesheet":
                 href = node.attributes.get("href", "")
                 if href and self.current_url:
@@ -205,50 +197,96 @@ class Browser:
 
     def _find_body_bg(self) -> str:
         if not self.dom:
-            return "white"
+            return "#ffffff"
         for node in self._iter_elements(self.dom):
             if node.tag in ("body", "html"):
                 bg = node.style.get("background-color")
                 if bg and bg not in ("transparent", "none"):
                     return bg
-        return "white"
+        return "#ffffff"
 
     def _relayout(self) -> None:
+        content_height = self.height - CHROME_HEIGHT
         self.document = DocumentLayout(self.dom, self.width)
         self.document.layout()
 
         self.display_list = []
         paint_tree(self.document, self.display_list)
 
-        self.max_y = max(
-            (cmd.bottom for cmd in self.display_list), default=0
-        )
+        self.max_y = max((cmd.bottom for cmd in self.display_list), default=0)
         self._clamp_scroll()
-        self._draw()
 
     def _draw(self) -> None:
-        self.canvas.delete("all")
+        self.renderer.clear(self._body_bg)
+
+        content_top = CHROME_HEIGHT
+        sdl2.SDL_RenderSetClipRect(
+            self.renderer._renderer,
+            sdl2.SDL_Rect(0, content_top, self.width, self.height - content_top),
+        )
+
         for cmd in self.display_list:
             if cmd.bottom < self.scroll:
                 continue
             if cmd.top > self.scroll + self.height:
                 continue
-            cmd.execute(self.scroll, self.canvas)
+            cmd.execute(self.scroll - content_top, self.renderer)
+
+        sdl2.SDL_RenderSetClipRect(self.renderer._renderer, None)
+
         self._draw_scrollbar()
+        self._draw_chrome()
+
+        if self._loading:
+            f = self.renderer.get_font(18, "normal", "roman", "Helvetica")
+            self.renderer.draw_text(self.width // 2 - 40, self.height // 2, "Loading...", f, "#888888")
+
+        self.renderer.present()
 
     def _draw_scrollbar(self) -> None:
-        if self.max_y <= self.height:
+        if self.max_y <= self.height - CHROME_HEIGHT:
             return
-        bar_height = max(20, self.height * self.height / self.max_y)
-        bar_top = self.scroll / self.max_y * self.height
-        x = self.width - SCROLLBAR_WIDTH
-        self.canvas.create_rectangle(
-            x, bar_top, x + SCROLLBAR_WIDTH, bar_top + bar_height,
-            fill="#888888", outline="",
-        )
+        view = self.height - CHROME_HEIGHT
+        bar_h = max(20, int(view * view / self.max_y))
+        bar_y = CHROME_HEIGHT + int(self.scroll / self.max_y * view)
+        self.renderer.draw_rect(self.width - SCROLLBAR_WIDTH, bar_y,
+                                SCROLLBAR_WIDTH, bar_h, "#888888")
+
+    def _draw_chrome(self) -> None:
+        r = self.renderer
+        r.draw_rect(0, 0, self.width, CHROME_HEIGHT, "#e8e8e8")
+        r.draw_line(0, CHROME_HEIGHT, self.width, CHROME_HEIGHT, "#cccccc", 1)
+
+        f = self._chrome_font
+        btn_w = 28
+        btn_h = 24
+        btn_y = (CHROME_HEIGHT - btn_h) // 2
+
+        r.draw_rect(4, btn_y, btn_w, btn_h, "#d0d0d0")
+        r.draw_outline(4, btn_y, btn_w, btn_h, "#aaaaaa")
+        r.draw_text(10, btn_y + 3, "\u2190", f, "#333333")
+
+        r.draw_rect(36, btn_y, btn_w, btn_h, "#d0d0d0")
+        r.draw_outline(36, btn_y, btn_w, btn_h, "#aaaaaa")
+        r.draw_text(42, btn_y + 3, "\u2192", f, "#333333")
+
+        addr_x = 70
+        addr_w = self.width - addr_x - 8
+        addr_h = 24
+        addr_y = (CHROME_HEIGHT - addr_h) // 2
+        border = "#4488ff" if self._address_focused else "#bbbbbb"
+        r.draw_rect(addr_x, addr_y, addr_w, addr_h, "#ffffff")
+        r.draw_outline(addr_x, addr_y, addr_w, addr_h, border, 1)
+
+        text = self._address_text
+        r.draw_text(addr_x + 6, addr_y + 4, text, f, "#333333")
+
+        if self._address_focused:
+            cursor_x = addr_x + 6 + f.measure(text[:self._address_cursor])
+            r.draw_line(cursor_x, addr_y + 3, cursor_x, addr_y + addr_h - 3, "#333333", 1)
 
     def _clamp_scroll(self) -> None:
-        max_scroll = max(0, self.max_y - self.height)
+        max_scroll = max(0, self.max_y - (self.height - CHROME_HEIGHT))
         self.scroll = max(0, min(self.scroll, max_scroll))
 
     # -- navigation ---------------------------------------------------------
@@ -265,33 +303,27 @@ class Browser:
             return
         if self.current_url:
             self.forward_stack.append(self.current_url.url)
-        url = self.history.pop()
         self.scroll = 0
-        self.load(url)
+        self.load(self.history.pop())
 
     def _go_forward(self) -> None:
         if not self.forward_stack:
             return
         if self.current_url:
             self.history.append(self.current_url.url)
-        url = self.forward_stack.pop()
         self.scroll = 0
-        self.load(url)
+        self.load(self.forward_stack.pop())
 
-    def _on_address_enter(self, e: tkinter.Event) -> None:
-        url = self.address_bar.get().strip()
-        if not url:
+    # -- event handling -----------------------------------------------------
+
+    def _handle_click(self, x: int, y: int) -> None:
+        if y < CHROME_HEIGHT:
+            self._handle_chrome_click(x, y)
             return
-        if "://" not in url:
-            url = "https://" + url
-        self._navigate(url)
 
-    # -- click / link handling ----------------------------------------------
-
-    def _on_click(self, e: tkinter.Event) -> None:
-        self.canvas.focus_set()
-        doc_y = e.y + self.scroll
-        clicked_node = self._node_at(e.x, doc_y)
+        self._address_focused = False
+        doc_y = y - CHROME_HEIGHT + self.scroll
+        clicked_node = self._node_at(x, doc_y)
 
         old_focus = self._focused_input
         self._focused_input = None
@@ -330,13 +362,127 @@ class Browser:
             if self.js_runtime.dispatch_click(clicked_node):
                 return
 
-        href = self._link_at(e.x, doc_y)
+        href = self._link_at(x, doc_y)
         if href is None:
             return
         if href.startswith("#") or href.startswith("mailto:") or href.startswith("javascript:"):
             return
         resolved = self.current_url.resolve(href) if self.current_url else href
         self._navigate(resolved)
+
+    def _handle_chrome_click(self, x: int, y: int) -> None:
+        if x < 32:
+            self._go_back()
+        elif x < 64:
+            self._go_forward()
+        elif x >= 70:
+            self._address_focused = True
+            self._address_cursor = len(self._address_text)
+
+    def _handle_scroll(self, y: int) -> None:
+        self.scroll -= y * SCROLL_STEP
+        self._clamp_scroll()
+
+    def _handle_keydown(self, event: dict) -> None:
+        sym = event["sym"]
+        mod = event["mod"]
+        name = event.get("name", "")
+
+        ctrl = mod & (sdl2.KMOD_CTRL | sdl2.KMOD_GUI)
+
+        if ctrl and sym == sdl2.SDLK_EQUALS:
+            self._zoom = min(self._zoom + 0.1, 3.0)
+            self._on_js_mutate()
+            return
+        if ctrl and sym == sdl2.SDLK_MINUS:
+            self._zoom = max(self._zoom - 0.1, 0.3)
+            self._on_js_mutate()
+            return
+        if ctrl and sym == sdl2.SDLK_0:
+            self._zoom = 1.0
+            self._on_js_mutate()
+            return
+
+        if self._address_focused:
+            self._handle_address_key(sym)
+            return
+
+        if sym == sdl2.SDLK_TAB:
+            return
+
+        if not self._focused_input:
+            if sym == sdl2.SDLK_DOWN:
+                self.scroll += SCROLL_STEP
+                self._clamp_scroll()
+            elif sym == sdl2.SDLK_UP:
+                self.scroll -= SCROLL_STEP
+                self._clamp_scroll()
+            return
+
+        node = self._focused_input
+        current = node.attributes.get("value", "")
+        if sym == sdl2.SDLK_BACKSPACE:
+            node.attributes["value"] = current[:-1]
+            self._on_js_mutate()
+        elif sym == sdl2.SDLK_RETURN:
+            form = self._find_ancestor(node, ("form",))
+            if form:
+                self._unfocus(node)
+                self._focused_input = None
+                self._submit_form_el(form)
+                return
+            if self.js_runtime:
+                self.js_runtime.dispatch_event(node, "change")
+            self._focused_input = None
+            node._focused = False
+            self._on_js_mutate()
+        elif sym == sdl2.SDLK_ESCAPE:
+            self._unfocus(node)
+            self._focused_input = None
+            node._focused = False
+            self._on_js_mutate()
+
+    def _handle_textinput(self, text: str) -> None:
+        if self._address_focused:
+            self._address_text = (
+                self._address_text[:self._address_cursor]
+                + text
+                + self._address_text[self._address_cursor:]
+            )
+            self._address_cursor += len(text)
+            return
+
+        if self._focused_input:
+            node = self._focused_input
+            current = node.attributes.get("value", "")
+            node.attributes["value"] = current + text
+            if self.js_runtime:
+                self.js_runtime.dispatch_event(node, "input")
+            self._on_js_mutate()
+
+    def _handle_address_key(self, sym: int) -> None:
+        if sym == sdl2.SDLK_RETURN:
+            url = self._address_text.strip()
+            if url:
+                if "://" not in url:
+                    url = "https://" + url
+                self._address_focused = False
+                self._navigate(url)
+        elif sym == sdl2.SDLK_BACKSPACE:
+            if self._address_cursor > 0:
+                self._address_text = (
+                    self._address_text[:self._address_cursor - 1]
+                    + self._address_text[self._address_cursor:]
+                )
+                self._address_cursor -= 1
+        elif sym == sdl2.SDLK_ESCAPE:
+            self._address_focused = False
+        elif sym == sdl2.SDLK_LEFT:
+            self._address_cursor = max(0, self._address_cursor - 1)
+        elif sym == sdl2.SDLK_RIGHT:
+            self._address_cursor = min(len(self._address_text), self._address_cursor + 1)
+
+    # -- hit testing --------------------------------------------------------
 
     def _find_ancestor(self, node: Optional[Node], tags: tuple) -> Optional[Element]:
         while node:
@@ -355,6 +501,35 @@ class Browser:
                 return node
             node = getattr(node, "parent", None)
         return None
+
+    def _link_at(self, x: float, doc_y: float) -> Optional[str]:
+        for cmd in self.display_list:
+            if cmd.bottom < self.scroll or cmd.top > self.scroll + (self.height - CHROME_HEIGHT):
+                continue
+            if not (cmd.left <= x <= cmd.right and cmd.top <= doc_y <= cmd.bottom):
+                continue
+            node = getattr(cmd, "node", None)
+            if node is None:
+                continue
+            while node:
+                if isinstance(node, Element) and node.tag == "a":
+                    href = node.attributes.get("href", "")
+                    if href:
+                        return href
+                node = getattr(node, "parent", None)
+        return None
+
+    def _node_at(self, x: float, doc_y: float) -> Optional[Node]:
+        for cmd in self.display_list:
+            if cmd.bottom < self.scroll or cmd.top > self.scroll + (self.height - CHROME_HEIGHT):
+                continue
+            if cmd.left <= x <= cmd.right and cmd.top <= doc_y <= cmd.bottom:
+                node = getattr(cmd, "node", None)
+                if node is not None:
+                    return node
+        return None
+
+    # -- input / form handling ----------------------------------------------
 
     def _focus_input(self, node: Element) -> None:
         if self._focused_input and self._focused_input is not node:
@@ -402,16 +577,12 @@ class Browser:
         if self.js_runtime:
             if self.js_runtime.dispatch_event(form, "submit"):
                 return
-
         action = form.attributes.get("action", "")
         method = form.attributes.get("method", "GET").upper()
         data = self._collect_form_data(form)
-
         if not action:
             action = self.current_url.url if self.current_url else ""
-
         resolved = self.current_url.resolve(action) if self.current_url else action
-
         if method == "GET":
             from urllib.parse import urlencode
             qs = urlencode(data)
@@ -427,235 +598,20 @@ class Browser:
                 continue
             name = el.attributes["name"]
             itype = el.attributes.get("type", "text")
-            if itype == "hidden" or itype == "text" or itype == "password" or itype == "search":
+            if itype in ("hidden", "text", "password", "search"):
                 pairs.append((name, el.attributes.get("value", "")))
             elif itype in ("checkbox", "radio"):
                 if "checked" in el.attributes:
                     pairs.append((name, el.attributes.get("value", "on")))
-            elif itype == "submit":
-                pass
         return pairs
 
-    def _on_key(self, e: tkinter.Event) -> None:
-        if e.widget == self.address_bar:
-            return
-        if e.keysym == "Tab":
-            self._tab_focus(not (e.state & 0x1))
-            return
-        if not self._focused_input:
-            return
-
-        node = self._focused_input
-        current = node.attributes.get("value", "")
-
-        if e.keysym == "BackSpace":
-            node.attributes["value"] = current[:-1]
-        elif e.keysym == "Return":
-            form = self._find_ancestor(node, ("form",))
-            if form:
-                self._unfocus(node)
-                self._focused_input = None
-                self._submit_form_el(form)
-                return
-            if self.js_runtime:
-                self.js_runtime.dispatch_event(node, "change")
-            self._focused_input = None
-            node._focused = False
-        elif e.keysym == "Tab":
-            self._unfocus(node)
-            self._focused_input = None
-            node._focused = False
-            self._tab_focus(not (e.state & 0x1))
-            return
-        elif e.keysym == "Escape":
-            self._unfocus(node)
-            self._focused_input = None
-            node._focused = False
-        elif len(e.char) == 1 and e.char.isprintable():
-            node.attributes["value"] = current + e.char
-            if self.js_runtime:
-                self.js_runtime.dispatch_event(node, "input")
-        else:
-            return
-        self._on_js_mutate()
-
-    def _on_hover(self, e: tkinter.Event) -> None:
-        now = time.monotonic()
-        if now - self._last_hover_time < 0.05:
-            return
-        self._last_hover_time = now
-        doc_y = e.y + self.scroll
-        node = self._node_at(e.x, doc_y)
-        element = self._find_ancestor_element(node)
-        is_clickable = element is not None or self._link_at(e.x, doc_y) is not None
-        cursor = "hand2" if is_clickable else ""
-        if cursor != self._last_hover_result:
-            self._last_hover_result = cursor
-            self.canvas.config(cursor=cursor)
-
-    def _link_at(self, x: float, doc_y: float) -> Optional[str]:
-        """Return the href of any <a> element at the given document coordinates."""
-        for cmd in self.display_list:
-            if cmd.bottom < self.scroll or cmd.top > self.scroll + self.height:
-                continue
-            if not (cmd.left <= x <= cmd.right and cmd.top <= doc_y <= cmd.bottom):
-                continue
-            node = getattr(cmd, "node", None)
-            if node is None:
-                continue
-            while node:
-                if isinstance(node, Element) and node.tag == "a":
-                    href = node.attributes.get("href", "")
-                    if href:
-                        return href
-                node = getattr(node, "parent", None)
-        return None
-
-    def _node_at(self, x: float, doc_y: float) -> Optional[Node]:
-        """Return the DOM node at the given document coordinates."""
-        for cmd in self.display_list:
-            if cmd.bottom < self.scroll or cmd.top > self.scroll + self.height:
-                continue
-            if cmd.left <= x <= cmd.right and cmd.top <= doc_y <= cmd.bottom:
-                node = getattr(cmd, "node", None)
-                if node is not None:
-                    return node
-        return None
+    # -- JS callbacks -------------------------------------------------------
 
     def _on_js_mutate(self) -> None:
-        """Called when JS modifies the DOM -- restyle and relayout."""
         if self.dom:
             style(self.dom, self.rules)
             self._relayout()
-            self._schedule_timers()
 
     @staticmethod
     def _on_console_log(*args: str) -> None:
         print("[console]", " ".join(str(a) for a in args))
-
-    # -- zoom ---------------------------------------------------------------
-
-    def _zoom_in(self) -> None:
-        self._zoom = min(self._zoom + 0.1, 3.0)
-        self._on_js_mutate()
-
-    def _zoom_out(self) -> None:
-        self._zoom = max(self._zoom - 0.1, 0.3)
-        self._on_js_mutate()
-
-    def _zoom_reset(self) -> None:
-        self._zoom = 1.0
-        self._on_js_mutate()
-
-    # -- tab navigation -----------------------------------------------------
-
-    def _collect_focusable(self) -> None:
-        self._focusable_nodes = []
-        self._focus_idx = -1
-        if not self.dom:
-            return
-        for el in self._iter_elements(self.dom):
-            if el.tag in ("a", "button", "input", "textarea", "select"):
-                self._focusable_nodes.append(el)
-
-    def _tab_focus(self, forward: bool = True) -> None:
-        if not self._focusable_nodes:
-            return
-        if forward:
-            self._focus_idx = (self._focus_idx + 1) % len(self._focusable_nodes)
-        else:
-            self._focus_idx = (self._focus_idx - 1) % len(self._focusable_nodes)
-        node = self._focusable_nodes[self._focus_idx]
-
-        if self._focused_input:
-            self._unfocus(self._focused_input)
-
-        if node.tag in ("input", "textarea"):
-            self._focus_input(node)
-        else:
-            node._focused = True
-            self._on_js_mutate()
-
-    # -- event loop / timers ------------------------------------------------
-
-    def _schedule_timers(self) -> None:
-        if not self.js_runtime:
-            return
-        for kind, fn, ms, tid in self.js_runtime.get_pending_timers():
-            delay = max(int(ms), 10)
-            if kind == "timeout":
-                self.window.after(delay, lambda f=fn: self._run_timer(f))
-            elif kind == "interval":
-                self._run_interval(fn, delay)
-
-    def _run_timer(self, fn: object) -> None:
-        if self.js_runtime:
-            try:
-                from .js.engine import ToyJSEngine
-                from .js.interpreter import JSFunction, NativeFunction
-                if isinstance(self.js_runtime.engine, ToyJSEngine):
-                    if isinstance(fn, (JSFunction, NativeFunction)):
-                        self.js_runtime.engine.interp._call(fn, [], self.js_runtime.engine.interp.global_env)
-                else:
-                    pass
-            except Exception:
-                pass
-
-    def _run_interval(self, fn: object, ms: int) -> None:
-        def tick():
-            self._run_timer(fn)
-            self.window.after(ms, tick)
-        self.window.after(ms, tick)
-
-    # -- scroll handlers ----------------------------------------------------
-
-    def _on_scroll_down(self, e: tkinter.Event) -> None:
-        self.scroll += SCROLL_STEP
-        self._clamp_scroll()
-        self._draw()
-
-    def _on_scroll_up(self, e: tkinter.Event) -> None:
-        self.scroll -= SCROLL_STEP
-        self._clamp_scroll()
-        self._draw()
-
-    def _on_resize(self, e: tkinter.Event) -> None:
-        if e.widget != self.canvas:
-            return
-        if e.width == self.width and e.height == self.height:
-            return
-        self.width = e.width
-        self.height = e.height
-        if self.document is not None:
-            self._relayout()
-
-    def _bind_mouse_wheel(self) -> None:
-        ws = self.window.tk.call("tk", "windowingsystem")
-        if ws in ("win32", "aqua"):
-            self.window.bind("<MouseWheel>", self._on_mouse_wheel)
-        elif ws == "x11":
-            self.window.bind("<Button-4>", self._on_linux_scroll)
-            self.window.bind("<Button-5>", self._on_linux_scroll)
-
-    def _on_mouse_wheel(self, event: tkinter.Event) -> None:
-        if event.widget == self.address_bar:
-            return
-        if sys.platform == "darwin":
-            self.scroll -= event.delta * 5
-        else:
-            self.scroll -= int(event.delta / 120) * SCROLL_STEP
-        self._clamp_scroll()
-        self._draw()
-
-    def _on_linux_scroll(self, event: tkinter.Event) -> None:
-        if event.num == 4:
-            self.scroll -= SCROLL_STEP
-        elif event.num == 5:
-            self.scroll += SCROLL_STEP
-        self._clamp_scroll()
-        self._draw()
-
-
-if __name__ == "__main__":
-    from .__main__ import main
-    main()

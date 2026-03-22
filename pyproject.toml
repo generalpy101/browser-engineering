@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A toy web browser built from scratch in Python"
 requires-python = ">=3.9"
 license = "MIT"
-dependencies = ["Pillow"]
+dependencies = ["PySDL2", "pysdl2-dll", "Pillow"]
 
 [project.optional-dependencies]
 js = ["quickjs", "dukpy"]

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import io
-import tkinter
-import tkinter.font
 from typing import Any, Dict, List, Optional
 
 from .html_parser import Element, Node, Text
@@ -15,9 +13,13 @@ BLOCK_ELEMENTS = frozenset([
     "summary", "address",
 ])
 
-_font_cache: dict = {}
+_renderer_ref: list = [None]
 _image_cache: Dict[str, Any] = {}
 _base_url_ref: list = [None]
+
+
+def set_renderer(renderer: Any) -> None:
+    _renderer_ref[0] = renderer
 
 
 def set_base_url(url: Any) -> None:
@@ -25,7 +27,7 @@ def set_base_url(url: Any) -> None:
 
 
 def _load_image(src: str) -> Any:
-    """Load an image from a URL and return a tkinter PhotoImage, or None."""
+    """Load raw image bytes from a URL, or None."""
     if src in _image_cache:
         return _image_cache[src]
     try:
@@ -33,23 +35,27 @@ def _load_image(src: str) -> Any:
         base = _base_url_ref[0]
         resolved = base.resolve(src) if base else src
         data = Url(resolved).fetch_binary()
-        from PIL import Image, ImageTk
-        img = Image.open(io.BytesIO(data))
-        tk_img = ImageTk.PhotoImage(img)
-        _image_cache[src] = tk_img
-        return tk_img
+        _image_cache[src] = data
+        return data
     except Exception:
         _image_cache[src] = None
         return None
 
 
-def get_font(size: int, weight: str, style: str, family: str) -> tkinter.font.Font:
-    key = (size, weight, style, family)
-    if key not in _font_cache:
-        _font_cache[key] = tkinter.font.Font(
-            size=size, weight=weight, slant=style, family=family,
-        )
-    return _font_cache[key]
+def _image_dimensions(data: bytes) -> tuple:
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        return img.width, img.height
+    except Exception:
+        return 0, 0
+
+
+def get_font(size: int, weight: str, style: str, family: str) -> Any:
+    r = _renderer_ref[0]
+    if r:
+        return r.get_font(size, weight, style, family)
+    raise RuntimeError("Renderer not initialized -- call set_renderer() before layout")
 
 
 def _resolve_px(value: str, default: float = 0.0) -> float:
@@ -414,39 +420,35 @@ class InlineLayout:
         src = node.attributes.get("src", "")
         if not src:
             return
-        tk_img = _load_image(src)
-        if tk_img:
-            w = tk_img.width()
-            h = tk_img.height()
+        img_data = _load_image(src)
+        if img_data:
+            iw, ih = _image_dimensions(img_data)
+            w, h = (iw or 20), (ih or 20)
         else:
             w, h = 20, 20
         attr_w = node.attributes.get("width")
         attr_h = node.attributes.get("height")
         if attr_w:
-            try:
-                w = int(attr_w)
-            except ValueError:
-                pass
+            try: w = int(attr_w)
+            except ValueError: pass
         if attr_h:
-            try:
-                h = int(attr_h)
-            except ValueError:
-                pass
-        if tk_img and attr_w and not attr_h:
-            h = int(tk_img.height() * w / max(tk_img.width(), 1))
-        if tk_img and attr_h and not attr_w:
-            w = int(tk_img.width() * h / max(tk_img.height(), 1))
+            try: h = int(attr_h)
+            except ValueError: pass
+        if img_data and attr_w and not attr_h and iw:
+            h = int(ih * w / max(iw, 1))
+        if img_data and attr_h and not attr_w and ih:
+            w = int(iw * h / max(ih, 1))
 
         if self._cursor_x + w > self.x + self.width and self._current_line:
             self._flush_line()
-        node._img = tk_img
+        node._img = img_data
         node._img_w = w
         node._img_h = h
         node._widget_type = "image"
         self._current_line.append((self._cursor_x, "", None, "", node))
         self._cursor_x += w
 
-    def _place_widget(self, text: str, font: tkinter.font.Font,
+    def _place_widget(self, text: str, font: Any,
                       color: str, node: Element, widget_type: str) -> None:
         if widget_type in ("checkbox", "radio"):
             w = font.measure(text) + 4
@@ -463,7 +465,7 @@ class InlineLayout:
         self._cursor_x += w + font.measure(" ")
 
     def _place_word(
-        self, word: str, font: tkinter.font.Font, color: str, node: Node,
+        self, word: str, font: Any, color: str, node: Node,
     ) -> None:
         w = font.measure(word)
         if self._cursor_x + w > self.x + self.width and self._current_line:
@@ -538,7 +540,7 @@ class TextLayout:
         self,
         word: str,
         x: float,
-        font: tkinter.font.Font,
+        font: Any,
         color: str,
         parent: LineLayout,
         dom_node: Node = None,
