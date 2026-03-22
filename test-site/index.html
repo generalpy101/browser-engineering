@@ -74,7 +74,8 @@
     <a href="#elements">Elements</a> |
     <a href="#links">Links</a> |
     <a href="#browser">Browser</a> |
-    <a href="#network">Network</a>
+    <a href="#network">Network</a> |
+    <a href="#ux">UX</a>
 </p>
 
 <!-- ============================================================ -->
@@ -506,6 +507,63 @@ ws.close();</pre>
     <p>Cookies are automatically sent with requests and stored from <code>Set-Cookie</code> headers. Persisted to <code>~/.pybrowser/cookies.json</code>.</p>
 </div>
 
+<!-- ============================================================ -->
+<h2 id="ux">10. Browser UX</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Right-Click Context Menu</h3>
+    <p>Right-click anywhere on the page to see the context menu with options:</p>
+    <ul>
+        <li><b>Open in New Tab</b> -- right-click on <a href="page2.html">this link</a> to test</li>
+        <li><b>Copy Link</b> -- shows the URL in the status bar</li>
+        <li><b>View Page Source</b> -- opens source in a new tab</li>
+        <li><b>Reload</b> -- reloads the current page</li>
+        <li><b>Toggle Reader Mode</b> -- strips the page to clean text</li>
+        <li><b>Toggle Dark Mode</b></li>
+    </ul>
+</div>
+
+<div class="test-box">
+    <h3>Status Bar</h3>
+    <p>Hover over any link -- the URL appears at the bottom-left of the window.</p>
+    <p>Try hovering: <a href="https://example.com">example.com</a> | <a href="https://browser.engineering/">browser.engineering</a></p>
+</div>
+
+<div class="test-box">
+    <h3>Reader Mode</h3>
+    <p>Press <b>Cmd/Ctrl+R</b> or use the context menu to toggle Reader Mode. It strips away navigation, ads, and styling, showing just the article text in a clean serif font. Press again to return to normal.</p>
+</div>
+
+<div class="test-box">
+    <h3>Dark Mode</h3>
+    <p>Right-click and select "Toggle Dark Mode" to switch themes. The toggle applies via the context menu.</p>
+</div>
+
+<div class="test-box">
+    <h3>WebSocket Echo Test</h3>
+    <p>
+        <input type="text" id="ws-input" placeholder="Type a message..." size="30">
+        <button id="btn-ws-send">Send via WebSocket</button>
+    </p>
+    <p id="ws-output">WebSocket status: not connected</p>
+    <p><small>Note: requires a WebSocket echo server. Try <code>wss://ws.postman-echo.com/raw</code></small></p>
+</div>
+
+<div class="test-box">
+    <h3>Keyboard Shortcuts Summary</h3>
+    <table>
+        <tr><td><b>Cmd/Ctrl+T</b></td><td>New tab</td></tr>
+        <tr><td><b>Cmd/Ctrl+W</b></td><td>Close tab</td></tr>
+        <tr><td><b>Cmd/Ctrl+F</b></td><td>Find in page</td></tr>
+        <tr><td><b>Cmd/Ctrl+D</b></td><td>Bookmark page</td></tr>
+        <tr><td><b>Cmd/Ctrl+H</b></td><td>History</td></tr>
+        <tr><td><b>Cmd/Ctrl+R</b></td><td>Reader mode</td></tr>
+        <tr><td><b>Cmd/Ctrl +/-/0</b></td><td>Zoom in/out/reset</td></tr>
+        <tr><td><b>Right-click</b></td><td>Context menu</td></tr>
+    </table>
+</div>
+
 <hr>
 <p class="center" style="color: #999;">
     End of test suite. Built for <b>Pybrowser</b>.
@@ -705,6 +763,38 @@ document.getElementById("btn-test-cors").addEventListener("click", function() {
             }
         });
     });
+});
+
+/* -- WebSocket test -- */
+var wsConn = null;
+document.getElementById("btn-ws-send").addEventListener("click", function() {
+    var msg = document.getElementById("ws-input").getAttribute("value") || "hello";
+    var out = document.getElementById("ws-output");
+    if (!wsConn) {
+        out.textContent = "Connecting...";
+        try {
+            wsConn = new WebSocket("wss://ws.postman-echo.com/raw");
+            wsConn.onopen = function() {
+                out.textContent = "Connected! Sending: " + msg;
+                wsConn.send(msg);
+            };
+            wsConn.onmessage = function(e) {
+                out.textContent = "Echo received: " + e.data;
+            };
+            wsConn.onerror = function() {
+                out.textContent = "WebSocket error (server may be unavailable)";
+            };
+            wsConn.onclose = function() {
+                out.textContent = out.textContent + " [closed]";
+                wsConn = null;
+            };
+        } catch(e) {
+            out.textContent = "WebSocket not available: " + e;
+        }
+    } else {
+        wsConn.send(msg);
+        out.textContent = "Sent: " + msg;
+    }
 });
 
 console.log("Test suite loaded successfully!");

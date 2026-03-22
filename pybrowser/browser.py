@@ -85,6 +85,13 @@ class Browser:
         self._bookmarks = self._load_bookmarks()
         self._history_log: List[dict] = self._load_history()
 
+        self._context_menu: Optional[dict] = None
+        self._status_text = ""
+        self._status_time = 0.0
+        self._dark_mode = False
+        self._reader_mode = False
+        self._reader_content: Optional[str] = None
+
     @property
     def tab(self) -> Tab:
         if not self.tabs:
@@ -101,7 +108,12 @@ class Browser:
                 if t == "quit":
                     running = False
                 elif t == "click":
-                    self._handle_click(event["x"], event["y"])
+                    if event.get("button") == 3:
+                        self._handle_right_click(event["x"], event["y"])
+                    else:
+                        self._handle_click(event["x"], event["y"])
+                elif t == "motion":
+                    self._handle_motion(event["x"], event["y"])
                 elif t == "scroll":
                     self._handle_scroll(event["y"])
                 elif t == "keydown":
@@ -317,6 +329,8 @@ class Browser:
         self._draw_find_bar()
         if self._loading:
             self.renderer.draw_text(self.width // 2 - 40, self.height // 2, "Loading...", self._font, "#888888")
+        self._draw_status_bar()
+        self._draw_context_menu()
         if self._alert_text is not None:
             self._draw_alert()
         self.renderer.present()
@@ -540,6 +554,9 @@ class Browser:
     # -- event handling -----------------------------------------------------
 
     def _handle_click(self, x: int, y: int) -> None:
+        if self._context_menu is not None:
+            self._handle_context_click(x, y)
+            return
         if self._alert_text is not None:
             self._alert_text = None
             return
@@ -658,6 +675,9 @@ class Browser:
             return
         if ctrl and sym == sdl2.SDLK_h:
             self._new_tab("pybrowser://history")
+            return
+        if ctrl and sym == sdl2.SDLK_r:
+            self._toggle_reader()
             return
         if ctrl and sym == sdl2.SDLK_EQUALS:
             self._zoom = min(self._zoom + 0.1, 3.0); self._on_js_mutate(); return
@@ -971,6 +991,133 @@ class Browser:
                 if isinstance(fn, (JSFunction, NativeFunction)):
                     rt.engine.interp._call(fn, [], rt.engine.interp.global_env)
             except Exception: pass
+
+    # -- context menu -------------------------------------------------------
+
+    def _handle_right_click(self, x: int, y: int) -> None:
+        if y < CHROME_HEIGHT:
+            return
+        doc_y = y - CHROME_HEIGHT + self.tab.scroll
+        href = self._link_at(x, doc_y)
+        items = []
+        if href:
+            resolved = self.tab.current_url.resolve(href) if self.tab.current_url else href
+            items.append(("Open in New Tab", lambda: self._new_tab(resolved)))
+            items.append(("Copy Link", lambda: self._copy_to_status(resolved)))
+        items.append(("View Page Source", lambda: self._new_tab(
+            "view-source:" + (self.tab.url or ""))))
+        items.append(("Reload", lambda: self.load(self.tab.url) if self.tab.url else None))
+        items.append(("Toggle Reader Mode", lambda: self._toggle_reader()))
+        items.append(("Toggle Dark Mode", lambda: self._toggle_dark_mode()))
+
+        iw = 180
+        ih = len(items) * 24 + 4
+        self._context_menu = {"x": x, "y": y, "w": iw, "h": ih, "items": items}
+
+    def _handle_context_click(self, x: int, y: int) -> None:
+        cm = self._context_menu
+        if cm and cm["x"] <= x <= cm["x"] + cm["w"] and cm["y"] <= y <= cm["y"] + cm["h"]:
+            idx = (y - cm["y"] - 2) // 24
+            if 0 <= idx < len(cm["items"]):
+                cm["items"][idx][1]()
+        self._context_menu = None
+
+    def _draw_context_menu(self) -> None:
+        cm = self._context_menu
+        if not cm:
+            return
+        r = self.renderer
+        f = self._font
+        x, y, w, h = cm["x"], cm["y"], cm["w"], cm["h"]
+        r.draw_rect(x - 1, y - 1, w + 2, h + 2, "#666666")
+        r.draw_rect(x, y, w, h, "#ffffff")
+        for i, (label, _) in enumerate(cm["items"]):
+            iy = y + 2 + i * 24
+            r.draw_text(x + 10, iy + 4, label, f, "#333333")
+            if i < len(cm["items"]) - 1:
+                r.draw_line(x + 5, iy + 23, x + w - 5, iy + 23, "#eeeeee", 1)
+
+    # -- status bar ---------------------------------------------------------
+
+    def _handle_motion(self, x: int, y: int) -> None:
+        if y <= CHROME_HEIGHT:
+            self._status_text = ""
+            return
+        doc_y = y - CHROME_HEIGHT + self.tab.scroll
+        href = self._link_at(x, doc_y)
+        if href:
+            resolved = self.tab.current_url.resolve(href) if self.tab.current_url and href else href
+            self._status_text = resolved
+            self._status_time = time.monotonic()
+        else:
+            if time.monotonic() - self._status_time > 0.5:
+                self._status_text = ""
+
+    def _draw_status_bar(self) -> None:
+        if not self._status_text:
+            return
+        r = self.renderer
+        f = self._font
+        tw = f.measure(self._status_text[:80]) + 20
+        bh = 22
+        by = self.height - bh
+        r.draw_rect(0, by, tw, bh, "#f0f0f0")
+        r.draw_line(0, by, tw, by, "#cccccc", 1)
+        r.draw_text(8, by + 4, self._status_text[:80], f, "#555555")
+
+    # -- dark mode ----------------------------------------------------------
+
+    def _toggle_dark_mode(self) -> None:
+        self._dark_mode = not self._dark_mode
+        self._copy_to_status("Dark mode: " + ("ON" if self._dark_mode else "OFF"))
+        self._on_js_mutate()
+
+    # -- reader mode --------------------------------------------------------
+
+    def _toggle_reader(self) -> None:
+        if self._reader_mode:
+            self._reader_mode = False
+            if self.tab.url:
+                self.load(self.tab.url)
+            return
+        self._reader_mode = True
+        html = self._build_reader_html()
+        tab = self.tab
+        tab.dom = HTMLParser(html).parse()
+        tab.rules = sort_rules(CSSParser(DEFAULT_STYLESHEET).parse())
+        style(tab.dom, tab.rules)
+        tab.body_bg = "#fefefe"
+        tab.scroll = 0
+        self._relayout()
+
+    def _build_reader_html(self) -> str:
+        if not self.tab.dom:
+            return "<html><body><p>No content</p></body></html>"
+        texts = []
+        title = self._find_title(self.tab.dom) or self.tab.url
+
+        def extract(node: object) -> None:
+            if isinstance(node, Text):
+                t = node.text.strip()
+                if len(t) > 30:
+                    texts.append(t)
+            if isinstance(node, Element):
+                if node.tag in ("script", "style", "nav", "footer", "header"):
+                    return
+                for c in node.children:
+                    extract(c)
+
+        extract(self.tab.dom)
+        paragraphs = "".join(f"<p>{t}</p>" for t in texts)
+        return (
+            '<html><body style="max-width:650px; margin:40px auto; font-family:Georgia,serif;'
+            f' line-height:1.8; color:#333; padding:20px;">'
+            f'<h1>{title}</h1>{paragraphs}</body></html>'
+        )
+
+    def _copy_to_status(self, text: str) -> None:
+        self._status_text = text
+        self._status_time = time.monotonic() + 3
 
     def _on_alert(self, msg): self._alert_text = str(msg)
 
