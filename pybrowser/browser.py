@@ -47,7 +47,7 @@ b { font-weight: bold; }
 strong { font-weight: bold; }
 i { font-style: italic; }
 em { font-style: italic; }
-a { color: blue; }
+a { color: #0066cc; }
 code { font-family: Courier; }
 small { font-size: 13px; }
 hr { margin-top: 8px; margin-bottom: 8px; }
@@ -72,6 +72,7 @@ class Browser:
         self.current_url: Optional[Url] = None
         self.history: List[str] = []
         self.forward_stack: List[str] = []
+        self._visited_urls: set = set()
         self._body_bg = "#ffffff"
         self.js_runtime: Optional[JSRuntime] = None
         self._focused_input: Optional[Element] = None
@@ -129,11 +130,13 @@ class Browser:
         self._draw()
 
         self.current_url = Url(url)
+        self._visited_urls.add(url)
         set_base_url(self.current_url)
         body = self._fetch(url)
         self.dom = HTMLParser(body).parse()
         self.rules = self._collect_rules(self.dom)
         style(self.dom, self.rules)
+        self._apply_visited_colors(self.dom)
 
         self._body_bg = self._find_body_bg()
         self.renderer.set_title("Pybrowser - " + url)
@@ -157,8 +160,32 @@ class Browser:
         url_obj = Url(url)
         if url_obj.view_source:
             body = url_obj.fetch()
-            return "<pre>" + body.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
+            return self._highlight_source(body)
         return url_obj.fetch()
+
+    @staticmethod
+    def _highlight_source(body: str) -> str:
+        import re
+        esc = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        esc = re.sub(
+            r"(&lt;/?)([\w-]+)",
+            r'<span style="color:#2980b9">\1\2</span>',
+            esc,
+        )
+        esc = re.sub(
+            r'([\w-]+)(=&quot;[^&]*&quot;)',
+            r'<span style="color:#27ae60">\1</span><span style="color:#e67e22">\2</span>',
+            esc,
+        )
+        esc = re.sub(
+            r"(&lt;!--.*?--&gt;)",
+            r'<span style="color:#999">\1</span>',
+            esc,
+        )
+        return (
+            '<body style="background-color:#2d2d2d; color:#f8f8f2; font-family:Courier; padding:16px;">'
+            f"<pre>{esc}</pre></body>"
+        )
 
     def _collect_rules(self, dom: Element) -> List[Rule]:
         default_rules = CSSParser(DEFAULT_STYLESHEET).parse()
@@ -694,6 +721,16 @@ class Browser:
         if self.dom:
             style(self.dom, self.rules)
             self._relayout()
+
+    def _apply_visited_colors(self, node: object) -> None:
+        if isinstance(node, Element) and node.tag == "a":
+            href = node.attributes.get("href", "")
+            resolved = self.current_url.resolve(href) if self.current_url and href else href
+            if resolved in self._visited_urls:
+                node.style["color"] = "#8e44ad"
+        if isinstance(node, Element):
+            for child in node.children:
+                self._apply_visited_colors(child)
 
     @staticmethod
     def _on_console_log(*args: str) -> None:

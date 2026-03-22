@@ -260,6 +260,10 @@ class BlockLayout:
                 self.x + self.width, self.y + self.height,
                 bg,
             ))
+        if isinstance(self.node, Element) and self.node.tag == "hr":
+            from .paint import DrawLine
+            line_y = self.y + self.height / 2
+            cmds.append(DrawLine(self.x, line_y, self.x + self.width, line_y, "#cccccc", 1))
         return cmds
 
 
@@ -340,6 +344,12 @@ class InlineLayout:
             elif node.tag == "img":
                 self._layout_image(node)
                 return
+            elif node.tag == "textarea":
+                self._layout_textarea(node)
+                return
+            elif node.tag == "select":
+                self._layout_select(node)
+                return
             for child in node.children:
                 self._walk(child)
 
@@ -413,6 +423,53 @@ class InlineLayout:
                 label += child.text.strip()
         label = label or "Button"
         self._place_widget(label, font, "#333", node, "button")
+
+    def _layout_textarea(self, node: Element) -> None:
+        node_style = getattr(node, "style", {})
+        size = int(_resolve_px(node_style.get("font-size", "16px"), 16))
+        if size < 1:
+            size = 1
+        font = get_font(size, "normal", "roman", "Courier")
+        cols = int(node.attributes.get("cols", "40"))
+        rows = int(node.attributes.get("rows", "4"))
+        value = node.attributes.get("value", "")
+        if not value:
+            for child in node.children:
+                if isinstance(child, Text):
+                    value += child.text
+        node.attributes["value"] = value
+        display = value.split("\n")[0] if value else ""
+        w = font.measure("m") * cols
+        h = font.metrics("linespace") * rows + 8
+        node._widget_type = "textarea"
+        node._widget_width = w
+        node._textarea_height = h
+        if self._cursor_x + w > self.x + self.width and self._current_line:
+            self._flush_line()
+        self._current_line.append((self._cursor_x, display[:cols], font, "#333", node))
+        self._cursor_x += w + font.measure(" ")
+
+    def _layout_select(self, node: Element) -> None:
+        node_style = getattr(node, "style", {})
+        size = int(_resolve_px(node_style.get("font-size", "16px"), 16))
+        if size < 1:
+            size = 1
+        font = get_font(size, "normal", "roman", "Helvetica")
+        selected_text = ""
+        for child in node.children:
+            if isinstance(child, Element) and child.tag == "option":
+                if "selected" in child.attributes or not selected_text:
+                    for gc in child.children:
+                        if isinstance(gc, Text):
+                            selected_text = gc.text.strip()
+        label = selected_text or "(select)"
+        node._widget_type = "select"
+        w = max(font.measure(label) + 30, 100)
+        node._widget_width = w
+        if self._cursor_x + w > self.x + self.width and self._current_line:
+            self._flush_line()
+        self._current_line.append((self._cursor_x, label, font, "#333", node))
+        self._cursor_x += w + font.measure(" ")
 
     def _layout_image(self, node: Element) -> None:
         src = node.attributes.get("src", "")
@@ -606,6 +663,28 @@ class TextLayout:
                 cmds.append(DrawOutline(bx, by, bx + bs, by + bs, "#666666", 1, n))
                 if checked:
                     cmds.append(DrawRect(bx + 3, by + 3, bx + bs - 3, by + bs - 3, "#333333", n))
+            elif widget_type == "textarea":
+                th = getattr(n, "_textarea_height", h)
+                cmds.append(DrawRect(self.x, y, self.x + w, y + th, "white", n))
+                border = "#4488ff" if focused else "#bbb"
+                bw = 2 if focused else 1
+                cmds.append(DrawOutline(self.x, y, self.x + w, y + th, border, bw, n))
+                if self.font and self.word:
+                    cmds.append(DrawText(self.x + 6, self.y, self.word, self.font, self.color, n))
+                if focused:
+                    cursor_x = self.x + 6 + (self.font.measure(self.word) if self.font else 0)
+                    from .paint import DrawLine
+                    cmds.append(DrawLine(cursor_x, self.y, cursor_x, self.y + (self.font.metrics("linespace") if self.font else 14), "#333", 1))
+            elif widget_type == "select":
+                cmds.append(DrawRect(self.x, y, self.x + w, y + h, "#f8f8f8", n))
+                cmds.append(DrawOutline(self.x, y, self.x + w, y + h, "#aaa", 1, n))
+                if self.font and self.word:
+                    cmds.append(DrawText(self.x + 6, self.y, self.word, self.font, "#333", n))
+                arrow_x = self.x + w - 16
+                arrow_y = y + h // 2
+                from .paint import DrawLine
+                cmds.append(DrawLine(arrow_x, arrow_y - 3, arrow_x + 5, arrow_y + 3, "#666", 1))
+                cmds.append(DrawLine(arrow_x + 5, arrow_y + 3, arrow_x + 10, arrow_y - 3, "#666", 1))
             else:
                 cmds.append(DrawRect(self.x, y, self.x + w, y + h, "white", n))
                 border = "#4488ff" if focused else "#bbb"
@@ -618,4 +697,18 @@ class TextLayout:
                     cmds.append(DrawLine(cursor_x, self.y, cursor_x, self.y + self.font.metrics("linespace"), "#333", 1))
         else:
             cmds.append(DrawText(self.x, self.y, self.word, self.font, self.color, self.node))
+
+        if not widget_type and self.font and self._is_in_link():
+            from .paint import DrawLine
+            underline_y = self.y + self.font.metrics("ascent") + 2
+            cmds.append(DrawLine(self.x, underline_y, self.x + self.width, underline_y, self.color, 1))
+
         return cmds
+
+    def _is_in_link(self) -> bool:
+        node = self.node
+        while node:
+            if isinstance(node, Element) and node.tag == "a":
+                return True
+            node = getattr(node, "parent", None)
+        return False
