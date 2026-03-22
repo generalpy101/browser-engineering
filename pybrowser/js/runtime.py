@@ -111,6 +111,15 @@ class JSRuntime:
         e.set_native_fn("__storageLength", self._py_storage_length)
         e.set_native_fn("__storageKey", self._py_storage_key)
         e.set_native_fn("__getLocationJSON", self._py_get_location_json)
+        e.set_native_fn("__insertBefore", self._py_insert_before)
+        e.set_native_fn("__replaceChild", self._py_replace_child)
+        e.set_native_fn("__cloneNode", self._py_clone_node)
+        e.set_native_fn("__closest", self._py_closest)
+        e.set_native_fn("__getDataset", self._py_get_dataset)
+        e.set_native_fn("__setDataset", self._py_set_dataset)
+        e.set_native_fn("__getComputedStyle", self._py_get_computed_style)
+        e.set_native_fn("__pushState", self._py_push_state)
+        e.set_native_fn("__replaceState", self._py_replace_state)
         e.set_native_fn("__wsConnect", self._py_ws_connect)
         e.set_native_fn("__wsSend", self._py_ws_send)
         e.set_native_fn("__wsClose", self._py_ws_close)
@@ -250,6 +259,102 @@ class JSRuntime:
             child.parent = None
             self._signal_mutation()
         return child_handle
+
+    def _py_insert_before(self, parent_handle, new_handle, ref_handle):
+        parent = self._get_node(parent_handle)
+        new_node = self._get_node(new_handle)
+        ref_node = self._get_node(ref_handle) if ref_handle else None
+        if isinstance(parent, Element) and new_node:
+            new_node.parent = parent
+            if ref_node and ref_node in parent.children:
+                idx = parent.children.index(ref_node)
+                parent.children.insert(idx, new_node)
+            else:
+                parent.children.append(new_node)
+            self._signal_mutation()
+        return new_handle
+
+    def _py_replace_child(self, parent_handle, new_handle, old_handle):
+        parent = self._get_node(parent_handle)
+        new_node = self._get_node(new_handle)
+        old_node = self._get_node(old_handle)
+        if isinstance(parent, Element) and new_node and old_node and old_node in parent.children:
+            idx = parent.children.index(old_node)
+            parent.children[idx] = new_node
+            new_node.parent = parent
+            old_node.parent = None
+            self._signal_mutation()
+        return old_handle
+
+    def _py_clone_node(self, handle, deep=False):
+        node = self._get_node(handle)
+        if not node:
+            return None
+        clone = self._deep_clone(node) if deep else self._shallow_clone(node)
+        return self._get_handle(clone)
+
+    def _shallow_clone(self, node):
+        if isinstance(node, Element):
+            el = Element(node.tag, dict(node.attributes), None)
+            el.style = dict(getattr(node, "style", {}))
+            el.children = []
+            return el
+        elif isinstance(node, Text):
+            t = Text(node.text, None)
+            t.style = {}
+            return t
+        return None
+
+    def _deep_clone(self, node):
+        clone = self._shallow_clone(node)
+        if isinstance(node, Element) and clone:
+            for child in node.children:
+                child_clone = self._deep_clone(child)
+                if child_clone:
+                    child_clone.parent = clone
+                    clone.children.append(child_clone)
+        return clone
+
+    def _py_closest(self, handle, selector):
+        node = self._get_node(handle)
+        selector = str(selector).strip()
+        while node:
+            if isinstance(node, Element):
+                if selector.startswith("#") and node.attributes.get("id") == selector[1:]:
+                    return self._get_handle(node)
+                elif selector.startswith(".") and selector[1:] in node.attributes.get("class", "").split():
+                    return self._get_handle(node)
+                elif node.tag == selector.lower():
+                    return self._get_handle(node)
+            node = getattr(node, "parent", None)
+        return None
+
+    def _py_get_dataset(self, handle, key):
+        node = self._get_node(handle)
+        if isinstance(node, Element):
+            return node.attributes.get(f"data-{key}", None)
+        return None
+
+    def _py_set_dataset(self, handle, key, value):
+        node = self._get_node(handle)
+        if isinstance(node, Element):
+            node.attributes[f"data-{key}"] = str(value)
+            self._signal_mutation()
+
+    def _py_push_state(self, state, title, url):
+        if self._base_url and url:
+            resolved = self._base_url.resolve(str(url))
+            from ..url import Url
+            self._base_url = Url(resolved)
+
+    def _py_replace_state(self, state, title, url):
+        self._py_push_state(state, title, url)
+
+    def _py_get_computed_style(self, handle, prop):
+        node = self._get_node(handle)
+        if isinstance(node, Element) and hasattr(node, "style"):
+            return node.style.get(str(prop), "")
+        return ""
 
     def _py_get_style(self, handle, prop):
         node = self._get_node(handle)

@@ -49,6 +49,45 @@ function __makeNode(handle) {
                 return __canvasContexts[handle];
             }
             return null;
+        },
+        insertBefore(newNode, refNode) {
+            __insertBefore(handle, newNode.__handle, refNode ? refNode.__handle : null);
+            return newNode;
+        },
+        replaceChild(newNode, oldNode) {
+            __replaceChild(handle, newNode.__handle, oldNode.__handle);
+            return oldNode;
+        },
+        cloneNode(deep) {
+            return __makeNode(__cloneNode(handle, !!deep));
+        },
+        closest(sel) {
+            return __makeNode(__closest(handle, sel));
+        },
+        get dataset() {
+            return new Proxy({}, {
+                get(_, key) { return __getDataset(handle, key); },
+                set(_, key, val) { __setDataset(handle, key, String(val)); return true; }
+            });
+        },
+        get nodeType() { return __getTagName(handle) ? 1 : 3; },
+        get firstChild() {
+            var ch = JSON.parse(__getChildren(handle) || "[]");
+            return ch.length > 0 ? __makeNode(ch[0]) : null;
+        },
+        get lastChild() {
+            var ch = JSON.parse(__getChildren(handle) || "[]");
+            return ch.length > 0 ? __makeNode(ch[ch.length - 1]) : null;
+        },
+        get nextSibling() { return null; },
+        contains(other) {
+            if (!other) return false;
+            var n = other;
+            while (n) {
+                if (n.__handle === handle) return true;
+                n = n.parentNode;
+            }
+            return false;
         }
     };
 }
@@ -74,8 +113,36 @@ var console = {
     error(...args) { __log("[error] " + args.map(String).join(" ")); }
 };
 
-var window = { alert(msg) { __alert(String(msg || "")); }, document, console };
+var history = {
+    pushState(state, title, url) { __pushState(JSON.stringify(state || null), String(title), String(url)); },
+    replaceState(state, title, url) { __replaceState(JSON.stringify(state || null), String(title), String(url)); },
+    back() {},
+    forward() {},
+    length: 1
+};
+
+var window = {
+    alert(msg) { __alert(String(msg || "")); },
+    document, console, history, location,
+    getComputedStyle(el) {
+        return new Proxy({}, {
+            get(_, prop) {
+                var cssProp = prop.replace(/[A-Z]/g, m => "-" + m.toLowerCase());
+                return __getComputedStyle(el.__handle, cssProp);
+            }
+        });
+    },
+    addEventListener(type, fn) {
+        if (type === "DOMContentLoaded" || type === "load") fn();
+    },
+    dispatchEvent() {},
+    innerWidth: 1200, innerHeight: 900,
+};
 function alert(msg) { __alert(String(msg || "")); }
+document.addEventListener = function(type, fn) {
+    if (type === "DOMContentLoaded" || type === "readystatechange") fn();
+};
+document.readyState = "complete";
 
 /* -- fetch API (sync thenable) ------------------------------------------ */
 function __syncThen(val) { return { then(fn) { return __syncThen(fn(val)); }, catch() { return this; } }; }

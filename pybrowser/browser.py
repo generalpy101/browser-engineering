@@ -16,7 +16,7 @@ from .devtools import DevTools
 from .extensions import ExtensionManager
 from .html_parser import Element, HTMLParser, Text
 from .js import JSRuntime, create_engine
-from .layout import DocumentLayout, set_base_url, set_renderer
+from .layout import DocumentLayout, _resolve_px, set_base_url, set_renderer
 from .paint import DrawText, paint_tree
 from .renderer import SDLRenderer
 from .tab import Tab
@@ -324,6 +324,7 @@ class Browser:
 
     def _collect_fixed(self, tab) -> None:
         normal = []
+        tab.sticky_list = []
         for cmd in tab.display_list:
             node = getattr(cmd, "node", None)
             if node and isinstance(node, Element):
@@ -331,6 +332,9 @@ class Browser:
                 if pos == "fixed":
                     tab.fixed_list.append(cmd)
                     continue
+                if pos == "sticky":
+                    sticky_top = _resolve_px(node.style.get("top", "0"))
+                    tab.sticky_list.append((cmd, cmd.top, sticky_top))
             normal.append(cmd)
         tab.display_list = normal
 
@@ -350,6 +354,10 @@ class Browser:
                 continue
             cmd.execute(tab.scroll - content_top, self.renderer)
         sdl2.SDL_RenderSetClipRect(self.renderer._renderer, None)
+
+        for cmd, orig_top, sticky_offset in getattr(tab, "sticky_list", []):
+            if tab.scroll + content_top + sticky_offset > orig_top:
+                cmd.execute(tab.scroll - content_top - sticky_offset, self.renderer)
 
         for cmd in tab.fixed_list:
             cmd.execute(-content_top, self.renderer)

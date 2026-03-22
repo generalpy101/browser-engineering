@@ -570,6 +570,7 @@ def style(node: Node, rules: List[Rule]) -> None:
 
     _inherit(node)
     _resolve_units(node)
+    _apply_pseudo_elements(node, rules)
 
     for child in node.children:
         style(child, rules)
@@ -621,6 +622,42 @@ def _resolve_units(node: Node) -> None:
                 node.style[prop] = resolved
             else:
                 node.style.pop(prop, None)
+
+
+def _apply_pseudo_elements(node: Node, rules: List[Rule]) -> None:
+    """Inject ::before/::after content as synthetic Text children."""
+    if not isinstance(node, Element):
+        return
+    for pseudo, insert_at in [("before", 0), ("after", -1)]:
+        content = None
+        pseudo_style: Dict[str, str] = {}
+        for selector, body in rules:
+            sel_str = repr(selector).lower()
+            if f":{pseudo}" in sel_str or f"::{pseudo}" in sel_str:
+                base_sel_str = sel_str.split(f":{pseudo}")[0].split(f"::{pseudo}")[0]
+                if node.tag in base_sel_str or f"#{node.attributes.get('id', '')}" in base_sel_str:
+                    pseudo_style.update(body)
+        if not pseudo_style:
+            content_val = node.style.get(f"_content_{pseudo}")
+            if content_val:
+                content = content_val
+        if "content" in pseudo_style:
+            raw = pseudo_style["content"].strip().strip("'\"")
+            if raw and raw not in ("none", "normal", ""):
+                content = raw
+        if content:
+            marker = f"__pseudo_{pseudo}"
+            already = any(isinstance(c, Text) and getattr(c, "_pseudo", "") == marker
+                         for c in node.children)
+            if not already:
+                t = Text(content, node)
+                t.style = dict(node.style)
+                t.style.update(pseudo_style)
+                t._pseudo = marker
+                if insert_at == 0:
+                    node.children.insert(0, t)
+                else:
+                    node.children.append(t)
 
 
 def cascade_sort_key(rule: Rule) -> Tuple[int, int, int]:

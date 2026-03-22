@@ -96,8 +96,13 @@ def _is_block_node(child: Node) -> bool:
 def layout_mode(node: Node) -> str:
     if isinstance(node, Text):
         return "inline"
-    if node.style.get("display", "block") == "none":
+    display = node.style.get("display", "block")
+    if display == "none":
         return "none"
+    if display == "inline-block":
+        return "inline"
+    if display in ("flex", "grid", "inline-flex", "inline-grid"):
+        return "block"
     if any(_is_block_node(c) for c in node.children):
         return "block"
     elif node.children:
@@ -180,9 +185,9 @@ class BlockLayout:
 
         if isinstance(self.node, Element) and self.node.tag == "tr":
             self._layout_table_row()
-        elif display == "grid":
+        elif display in ("grid", "inline-grid"):
             self._layout_grid()
-        elif display == "flex":
+        elif display in ("flex", "inline-flex"):
             self._layout_flex()
         elif mode == "block":
             self._layout_block()
