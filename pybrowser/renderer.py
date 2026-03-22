@@ -227,11 +227,32 @@ class SDLRenderer:
         sdl2.SDL_SetRenderDrawColor(self._renderer, r, g, b, 255)
         sdl2.SDL_RenderClear(self._renderer)
 
-    def draw_rect(self, x: float, y: float, w: float, h: float, color: str) -> None:
+    def draw_rect(self, x: float, y: float, w: float, h: float, color: str,
+                  alpha: int = 255) -> None:
         r, g, b = _parse_color(color)
-        sdl2.SDL_SetRenderDrawColor(self._renderer, r, g, b, 255)
+        sdl2.SDL_SetRenderDrawBlendMode(self._renderer, sdl2.SDL_BLENDMODE_BLEND)
+        sdl2.SDL_SetRenderDrawColor(self._renderer, r, g, b, alpha)
         rect = sdl2.SDL_Rect(int(x), int(y), int(w), int(h))
         sdl2.SDL_RenderFillRect(self._renderer, rect)
+
+    def draw_rounded_rect(self, x: float, y: float, w: float, h: float,
+                          color: str, radius: int = 0, alpha: int = 255) -> None:
+        if radius <= 0:
+            self.draw_rect(x, y, w, h, color, alpha)
+            return
+        r, g, b = _parse_color(color)
+        sdl2.SDL_SetRenderDrawBlendMode(self._renderer, sdl2.SDL_BLENDMODE_BLEND)
+        sdl2.SDL_SetRenderDrawColor(self._renderer, r, g, b, alpha)
+        ix, iy, iw, ih = int(x), int(y), int(w), int(h)
+        rad = min(radius, iw // 2, ih // 2)
+        sdl2.SDL_RenderFillRect(self._renderer, sdl2.SDL_Rect(ix + rad, iy, iw - 2 * rad, ih))
+        sdl2.SDL_RenderFillRect(self._renderer, sdl2.SDL_Rect(ix, iy + rad, iw, ih - 2 * rad))
+        for corner_x, corner_y in [(ix + rad, iy + rad), (ix + iw - rad, iy + rad),
+                                    (ix + rad, iy + ih - rad), (ix + iw - rad, iy + ih - rad)]:
+            for dy in range(-rad, rad + 1):
+                for dx in range(-rad, rad + 1):
+                    if dx * dx + dy * dy <= rad * rad:
+                        sdl2.SDL_RenderDrawPoint(self._renderer, corner_x + dx, corner_y + dy)
 
     def draw_outline(self, x: float, y: float, w: float, h: float,
                      color: str, line_width: int = 1) -> None:

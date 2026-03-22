@@ -201,6 +201,7 @@ class Browser:
         return f'<body style="background-color:#2d2d2d; color:#f8f8f2; font-family:Courier; padding:16px;"><pre>{esc}</pre></body>'
 
     def _collect_rules(self, dom: Element) -> list:
+        CSSParser.viewport_width = self.width
         default_rules = CSSParser(DEFAULT_STYLESHEET).parse()
         page_rules: list = []
         css_urls: list = []

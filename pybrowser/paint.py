@@ -94,10 +94,91 @@ class DrawImage:
                                 self.image_data)
 
 
-DisplayCommand = Union[DrawText, DrawRect, DrawOutline, DrawLine, DrawImage]
+class DrawRoundedRect:
+    def __init__(self, x1: float, y1: float, x2: float, y2: float,
+                 color: str, radius: int = 0, alpha: int = 255, node: object = None) -> None:
+        self.top = y1
+        self.left = x1
+        self.bottom = y2
+        self.right = x2
+        self.color = color
+        self.radius = radius
+        self.alpha = alpha
+        self.node = node
+
+    def execute(self, scroll: int, renderer: SDLRenderer) -> None:
+        renderer.draw_rounded_rect(
+            self.left, self.top - scroll,
+            self.right - self.left, self.bottom - self.top,
+            self.color, self.radius, self.alpha,
+        )
+
+
+class DrawBoxShadow:
+    def __init__(self, x1: float, y1: float, x2: float, y2: float,
+                 color: str, blur: int = 4, spread: int = 0,
+                 offset_x: int = 0, offset_y: int = 2) -> None:
+        self.top = y1 + offset_y - blur - spread
+        self.left = x1 + offset_x - blur - spread
+        self.bottom = y2 + offset_y + blur + spread
+        self.right = x2 + offset_x + blur + spread
+        self.color = color
+        self.blur = blur
+        self.spread = spread
+        self.offset_x = offset_x
+        self.offset_y = offset_y
+        self.box = (x1, y1, x2, y2)
+        self.node = None
+
+    def execute(self, scroll: int, renderer: SDLRenderer) -> None:
+        x1, y1, x2, y2 = self.box
+        for i in range(self.blur, 0, -1):
+            alpha = int(40 * (1 - i / self.blur))
+            renderer.draw_rect(
+                x1 + self.offset_x - i - self.spread,
+                y1 + self.offset_y - i - self.spread - scroll,
+                (x2 - x1) + 2 * (i + self.spread),
+                (y2 - y1) + 2 * (i + self.spread),
+                self.color, alpha,
+            )
+
+
+class ClipStart:
+    def __init__(self, x: float, y: float, w: float, h: float) -> None:
+        self.top = y
+        self.left = x
+        self.bottom = y + h
+        self.right = x + w
+        self.node = None
+        self._rect = (x, y, w, h)
+
+    def execute(self, scroll: int, renderer: SDLRenderer) -> None:
+        import sdl2 as _sdl2
+        x, y, w, h = self._rect
+        _sdl2.SDL_RenderSetClipRect(
+            renderer._renderer,
+            _sdl2.SDL_Rect(int(x), int(y - scroll), int(w), int(h)),
+        )
+
+
+class ClipEnd:
+    def __init__(self) -> None:
+        self.top = self.left = self.bottom = self.right = 0
+        self.node = None
+
+    def execute(self, scroll: int, renderer: SDLRenderer) -> None:
+        import sdl2 as _sdl2
+        _sdl2.SDL_RenderSetClipRect(renderer._renderer, None)
+
+
+DisplayCommand = Union[DrawText, DrawRect, DrawOutline, DrawLine, DrawImage,
+                       DrawRoundedRect, DrawBoxShadow, ClipStart, ClipEnd]
 
 
 def paint_tree(layout_obj: object, display_list: List[DisplayCommand]) -> None:
     display_list.extend(layout_obj.paint())
     for child in layout_obj.children:
         paint_tree(child, display_list)
+    post = getattr(layout_obj, "paint_post", None)
+    if post:
+        display_list.extend(post())

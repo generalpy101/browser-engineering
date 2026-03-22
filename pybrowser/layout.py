@@ -360,20 +360,67 @@ class BlockLayout:
         self.height = max_h + self.padding_top + self.padding_bottom
 
     def paint(self) -> list:
+        from .paint import ClipStart, DrawBoxShadow, DrawLine, DrawRect, DrawRoundedRect
         cmds = []
-        bg = getattr(self.node, "style", {}).get("background-color")
-        if bg and bg != "transparent":
-            from .paint import DrawRect
-            cmds.append(DrawRect(
-                self.x, self.y,
-                self.x + self.width, self.y + self.height,
-                bg,
+        s = getattr(self.node, "style", {})
+
+        shadow = s.get("box-shadow")
+        if shadow and shadow != "none":
+            parts = shadow.split()
+            sh_color = "#00000033"
+            sh_x = sh_y = 0
+            sh_blur = 4
+            for p in parts:
+                from .css_parser import resolve_color
+                c = resolve_color(p)
+                if c:
+                    sh_color = c
+                elif p.endswith("px"):
+                    v = int(float(p[:-2]))
+                    if sh_x == 0 and sh_y == 0:
+                        sh_x = v
+                    elif sh_y == 0:
+                        sh_y = v
+                    else:
+                        sh_blur = v
+            cmds.append(DrawBoxShadow(
+                self.x, self.y, self.x + self.width, self.y + self.height,
+                sh_color, sh_blur, 0, sh_x, sh_y,
             ))
+
+        bg = s.get("background-color")
+        radius_str = s.get("border-radius", "0")
+        radius = int(_resolve_px(radius_str))
+        alpha = int(float(s.get("opacity", "1")) * 255)
+        alpha = max(0, min(255, alpha))
+
+        if bg and bg != "transparent":
+            if radius > 0:
+                cmds.append(DrawRoundedRect(
+                    self.x, self.y, self.x + self.width, self.y + self.height,
+                    bg, radius, alpha,
+                ))
+            else:
+                cmds.append(DrawRect(
+                    self.x, self.y, self.x + self.width, self.y + self.height, bg,
+                ))
+
+        overflow = s.get("overflow", "visible")
+        if overflow == "hidden":
+            cmds.append(ClipStart(self.x, self.y, self.width, self.height))
+            self._overflow_clip = True
+
         if isinstance(self.node, Element) and self.node.tag == "hr":
-            from .paint import DrawLine
             line_y = self.y + self.height / 2
             cmds.append(DrawLine(self.x, line_y, self.x + self.width, line_y, "#cccccc", 1))
+
         return cmds
+
+    def paint_post(self) -> list:
+        if getattr(self, "_overflow_clip", False):
+            from .paint import ClipEnd
+            return [ClipEnd()]
+        return []
 
 
 def _group_children(node: Node) -> list:

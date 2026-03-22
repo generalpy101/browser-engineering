@@ -323,6 +323,8 @@ Rule = Tuple[Selector, Dict[str, str]]
 # ---------------------------------------------------------------------------
 
 class CSSParser:
+    viewport_width: int = 1200
+
     def __init__(self, s: str) -> None:
         self.s = s
         self.i = 0
@@ -357,19 +359,39 @@ class CSSParser:
                 break
 
     def _skip_at_rule(self) -> None:
-        if "{" in self.s[self.i :]:
-            brace_pos = self.s.index("{", self.i)
-            depth = 1
-            self.i = brace_pos + 1
-            while self.i < len(self.s) and depth > 0:
-                if self.s[self.i] == "{":
-                    depth += 1
-                elif self.s[self.i] == "}":
-                    depth -= 1
-                self.i += 1
-        else:
+        rule_start = self.i
+        if "{" not in self.s[self.i:]:
             semi = self.s.find(";", self.i)
             self.i = semi + 1 if semi != -1 else len(self.s)
+            return
+
+        brace_pos = self.s.index("{", self.i)
+        condition = self.s[rule_start:brace_pos].strip()
+
+        if condition.startswith("@media") and self._eval_media(condition):
+            self.i = brace_pos + 1
+            return
+
+        depth = 1
+        self.i = brace_pos + 1
+        while self.i < len(self.s) and depth > 0:
+            if self.s[self.i] == "{":
+                depth += 1
+            elif self.s[self.i] == "}":
+                depth -= 1
+            self.i += 1
+
+    def _eval_media(self, condition: str) -> bool:
+        import re
+        mw_match = re.search(r"max-width:\s*(\d+)px", condition)
+        if mw_match:
+            return self.viewport_width <= int(mw_match.group(1))
+        min_match = re.search(r"min-width:\s*(\d+)px", condition)
+        if min_match:
+            return self.viewport_width >= int(min_match.group(1))
+        if "screen" in condition or "all" in condition:
+            return True
+        return False
 
     def _skip_to_next_rule(self) -> None:
         pos = self.s.find("}", self.i)
@@ -576,7 +598,8 @@ def _resolve_units(node: Node) -> None:
     for prop in (
         "margin-top", "margin-right", "margin-bottom", "margin-left",
         "padding-top", "padding-right", "padding-bottom", "padding-left",
-        "width", "max-width", "line-height",
+        "width", "max-width", "line-height", "border-radius",
+        "top", "right", "bottom", "left",
     ):
         raw = node.style.get(prop)
         if raw and raw != "auto" and raw != "none":
