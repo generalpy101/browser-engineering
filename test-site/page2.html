@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Page 2 - Navigation Test</title>
+    <style>
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f0f7ff;
+            color: #333;
+        }
+        h1 { color: #2c3e50; }
+        .back-link { font-size: 18px; }
+        .info-box {
+            background-color: #fff;
+            border: 1px solid #bbb;
+            padding: 20px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Page 2</h1>
+    <p class="back-link"><a href="index.html">Back to test suite</a></p>
+
+    <div class="info-box">
+        <h3>Navigation Test</h3>
+        <p>If you can see this page, internal link navigation works correctly.</p>
+        <p>Click the back button or the link above to return.</p>
+    </div>
+
+    <div class="info-box">
+        <h3>Cookie Persistence</h3>
+        <p id="cookie-info">Checking cookies...</p>
+        <button id="btn-set-cookie">Set Test Cookie</button>
+    </div>
+
+    <script>
+    var info = document.getElementById("cookie-info");
+    var stored = localStorage.getItem("test-visited");
+    if (stored) {
+        info.textContent = "Welcome back! Last visited: " + stored;
+    } else {
+        info.textContent = "First visit to this page.";
+    }
+    localStorage.setItem("test-visited", new Date().toLocaleString());
+
+    document.getElementById("btn-set-cookie").addEventListener("click", function() {
+        localStorage.setItem("page2-cookie", "hello from page 2");
+        info.textContent = "Cookie set! Go back and load it with key 'page2-cookie'.";
+    });
+    </script>
+</body>
+</html>

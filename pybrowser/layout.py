@@ -500,18 +500,24 @@ class LineLayout:
             self.height = 0
             return
 
-        max_ascent = max(c.font.metrics("ascent") for c in self.children)
-        max_descent = max(c.font.metrics("descent") for c in self.children)
-        self.height = int(1.25 * (max_ascent + max_descent))
+        font_children = [c for c in self.children if c.font]
+        max_ascent = max((c.font.metrics("ascent") for c in font_children), default=0)
+        max_descent = max((c.font.metrics("descent") for c in font_children), default=0)
+        max_img_h = max((c.height for c in self.children if not c.font), default=0)
+        text_height = int(1.25 * (max_ascent + max_descent)) if (max_ascent + max_descent) else 0
+        self.height = max(text_height, max_img_h)
 
-        baseline = self.y + int(1.25 * max_ascent)
+        baseline = self.y + int(1.25 * max_ascent) if max_ascent else self.y + self.height
         for child in self.children:
-            child.y = baseline - child.font.metrics("ascent")
+            if child.font:
+                child.y = baseline - child.font.metrics("ascent")
+            else:
+                child.y = baseline - child.height
 
         text_align = getattr(self.node, "style", {}).get("text-align", "left")
         if text_align in ("center", "right", "justify") and self.children:
             last = self.children[-1]
-            used = last.x + last.font.measure(last.word) - self.x
+            used = last.x + (last.font.measure(last.word) if last.font else last.width) - self.x
             gap = self.width - used
             if text_align == "center":
                 offset = gap / 2
@@ -543,10 +549,18 @@ class TextLayout:
         self.children: list = []
         self.x = x
         self.y = 0
-        self.width = font.measure(word)
-        self.height = font.metrics("linespace")
         self.font = font
         self.color = color
+
+        if getattr(self.node, "_widget_type", None) == "image":
+            self.width = getattr(self.node, "_img_w", 20)
+            self.height = getattr(self.node, "_img_h", 20)
+        elif font:
+            self.width = font.measure(word)
+            self.height = font.metrics("linespace")
+        else:
+            self.width = 0
+            self.height = 0
 
     def paint(self) -> list:
         from .paint import DrawImage, DrawOutline, DrawRect, DrawText

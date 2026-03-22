@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pybrowser Test Suite</title>
+    <style>
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #222;
+            line-height: 1.6;
+            background-color: #fafafa;
+        }
+        h1 { color: #1a5276; margin-bottom: 5px; }
+        h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top: 30px; }
+        h3 { color: #555; }
+        .subtitle { color: #777; font-style: italic; margin-top: 0; }
+        .pass { color: #27ae60; font-weight: bold; }
+        .fail { color: #e74c3c; font-weight: bold; }
+        .test-box {
+            background-color: #fff;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+        }
+        code {
+            font-family: Courier;
+            background-color: #f0f0f0;
+            padding: 2px 6px;
+        }
+        pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            font-family: Courier;
+            white-space: pre;
+        }
+        a { color: #2980b9; }
+        a:visited { color: #8e44ad; }
+        .highlight { background-color: #fffde7; padding: 10px; border-left: 4px solid #f1c40f; }
+        .grid { display: block; }
+        .badge {
+            background-color: #3498db;
+            color: white;
+            padding: 4px 10px;
+            font-size: 13px;
+        }
+        .red { color: #e74c3c; }
+        .green { color: #27ae60; }
+        .blue { color: #2980b9; }
+        .big { font-size: 24px; }
+        .small { font-size: 11px; }
+        .bold { font-weight: bold; }
+        .italic { font-style: italic; }
+        .center { text-align: center; }
+        #counter-display { font-size: 32px; font-weight: bold; color: #2c3e50; }
+        #todo-list li { margin: 5px 0; }
+        .done { color: #999; }
+        #clock { font-size: 20px; font-weight: bold; color: #8e44ad; }
+        #fetch-result { padding: 10px; background-color: #eee; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<h1>Pybrowser Test Suite</h1>
+<p class="subtitle">A comprehensive test page for all browser features</p>
+<p>Navigate sections: 
+    <a href="#html">HTML</a> |
+    <a href="#css">CSS</a> |
+    <a href="#forms">Forms</a> |
+    <a href="#js">JavaScript</a> |
+    <a href="#apis">Web APIs</a> |
+    <a href="#links">Links</a>
+</p>
+
+<!-- ============================================================ -->
+<h2 id="html">1. HTML Parsing</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Basic Elements</h3>
+    <p>This is a <b>bold</b> word, an <i>italic</i> word, and a <em>emphasized</em> word.</p>
+    <p>This has <strong>strong</strong> and <code>inline code</code> formatting.</p>
+    <p>Line one<br>Line two (after br tag)</p>
+    <hr>
+    <p>Above was a horizontal rule.</p>
+</div>
+
+<div class="test-box">
+    <h3>Headings</h3>
+    <h1>Heading 1</h1>
+    <h2>Heading 2</h2>
+    <h3>Heading 3</h3>
+    <h4>Heading 4</h4>
+    <h5>Heading 5</h5>
+    <h6>Heading 6</h6>
+</div>
+
+<div class="test-box">
+    <h3>Lists</h3>
+    <ul>
+        <li>Unordered item 1</li>
+        <li>Unordered item 2</li>
+        <li>Unordered item 3</li>
+    </ul>
+    <ol>
+        <li>Ordered item 1</li>
+        <li>Ordered item 2</li>
+        <li>Ordered item 3</li>
+    </ol>
+</div>
+
+<div class="test-box">
+    <h3>Preformatted Text</h3>
+    <pre>function hello() {
+    console.log("Hello, world!");
+    return 42;
+}</pre>
+</div>
+
+<div class="test-box">
+    <h3>Entities</h3>
+    <p>&amp; (ampersand) &lt; (less than) &gt; (greater than) &quot; (quote) &copy; (copyright)</p>
+    <p>Numeric: &#65; (A) &#x42; (B)</p>
+</div>
+
+<div class="test-box">
+    <h3>Nested / Mixed Content</h3>
+    <p>Text with <a href="#html">a link</a> and <b>bold with <i>nested italic</i></b> inside.</p>
+    <blockquote>
+        This is a blockquote. It should be indented from both sides.
+    </blockquote>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="css">2. CSS Styling</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Colors</h3>
+    <p class="red">This text should be red (#e74c3c)</p>
+    <p class="green">This text should be green (#27ae60)</p>
+    <p class="blue">This text should be blue (#2980b9)</p>
+    <p style="color: rgb(255, 165, 0);">This text should be orange (rgb)</p>
+    <p style="color: #9b59b6;">This text should be purple (hex)</p>
+</div>
+
+<div class="test-box">
+    <h3>Font Sizes</h3>
+    <p class="big">This is 24px text</p>
+    <p>This is default (16px) text</p>
+    <p class="small">This is 11px text</p>
+</div>
+
+<div class="test-box">
+    <h3>Font Styles</h3>
+    <p class="bold">Bold text</p>
+    <p class="italic">Italic text</p>
+    <p class="bold italic">Bold and italic text</p>
+</div>
+
+<div class="test-box">
+    <h3>Background Colors</h3>
+    <div class="highlight">
+        This box has a yellow background with a gold left border.
+    </div>
+    <p><span class="badge">Blue badge</span> next to normal text</p>
+</div>
+
+<div class="test-box">
+    <h3>Text Alignment</h3>
+    <p style="text-align: left;">Left aligned text</p>
+    <p class="center">Center aligned text</p>
+    <p style="text-align: right;">Right aligned text</p>
+</div>
+
+<div class="test-box">
+    <h3>Max-width &amp; Auto Margin</h3>
+    <div style="max-width: 300px; margin: 0 auto; background-color: #eee; padding: 10px; text-align: center;">
+        This box is 300px wide and centered.
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="forms">3. Forms &amp; Inputs</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Text Inputs</h3>
+    <p>Click an input to focus, type to enter text, press Enter or Escape to blur.</p>
+    <form id="test-form" action="#forms" method="GET">
+        <p>Name: <input type="text" name="name" placeholder="Your name" size="30"></p>
+        <p>Email: <input type="text" name="email" placeholder="you@example.com" size="30"></p>
+        <p>Password: <input type="password" name="pass" placeholder="secret" size="30"></p>
+        <p>Search: <input type="search" name="q" placeholder="Search..." size="30"></p>
+        <p><input type="submit" value="Submit Form"></p>
+    </form>
+</div>
+
+<div class="test-box">
+    <h3>Checkboxes &amp; Radio Buttons</h3>
+    <p>
+        <input type="checkbox" name="agree"> I agree to the terms<br>
+        <input type="checkbox" name="newsletter" checked> Subscribe to newsletter
+    </p>
+    <p>Favorite color:</p>
+    <p>
+        <input type="radio" name="color" value="red"> Red<br>
+        <input type="radio" name="color" value="green"> Green<br>
+        <input type="radio" name="color" value="blue" checked> Blue
+    </p>
+</div>
+
+<div class="test-box">
+    <h3>Buttons</h3>
+    <button id="btn-test">Click Me</button>
+    <button id="btn-alert">Show Alert</button>
+    <p id="btn-output">Button output appears here.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="js">4. JavaScript</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>DOM Manipulation</h3>
+    <div id="dom-target">Original content</div>
+    <button id="btn-dom">Change Content</button>
+    <button id="btn-dom-add">Add Element</button>
+    <button id="btn-dom-remove">Remove Last</button>
+</div>
+
+<div class="test-box">
+    <h3>Counter (Event Handling)</h3>
+    <p id="counter-display">0</p>
+    <button id="btn-inc">+</button>
+    <button id="btn-dec">-</button>
+    <button id="btn-reset">Reset</button>
+</div>
+
+<div class="test-box">
+    <h3>Todo List (DOM + Events)</h3>
+    <p>
+        <input type="text" id="todo-input" placeholder="Add a todo..." size="30">
+        <button id="btn-add-todo">Add</button>
+    </p>
+    <ul id="todo-list"></ul>
+</div>
+
+<div class="test-box">
+    <h3>Style Manipulation</h3>
+    <p id="style-target">This text changes style when you click the buttons.</p>
+    <button id="btn-red">Red</button>
+    <button id="btn-big">Big</button>
+    <button id="btn-toggle-bold">Toggle Bold</button>
+</div>
+
+<div class="test-box">
+    <h3>Timer (setTimeout/setInterval)</h3>
+    <p id="clock">--:--:--</p>
+    <button id="btn-start-clock">Start Clock</button>
+    <button id="btn-stop-clock">Stop Clock</button>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="apis">5. Web APIs</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>localStorage</h3>
+    <p>
+        Key: <input type="text" id="storage-key" placeholder="key" size="15">
+        Value: <input type="text" id="storage-val" placeholder="value" size="15">
+        <button id="btn-store">Save</button>
+        <button id="btn-load">Load</button>
+    </p>
+    <p id="storage-output">Storage output appears here.</p>
+</div>
+
+<div class="test-box">
+    <h3>Fetch API</h3>
+    <button id="btn-fetch">Fetch example.com</button>
+    <div id="fetch-result">Click the button to test fetch().</div>
+</div>
+
+<div class="test-box">
+    <h3>Location Object</h3>
+    <p id="location-info">Click button to show location.</p>
+    <button id="btn-location">Show Location</button>
+</div>
+
+<div class="test-box">
+    <h3>Encoding Utilities</h3>
+    <button id="btn-encode">Test Encoding</button>
+    <p id="encode-output"></p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="links">6. Navigation &amp; Links</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Links</h3>
+    <ul>
+        <li><a href="page2.html">Internal link (page2.html)</a></li>
+        <li><a href="https://example.com">External link (example.com)</a></li>
+        <li><a href="#html">Fragment link (back to top)</a></li>
+        <li><a href="mailto:test@example.com">Mailto link (should be ignored)</a></li>
+    </ul>
+</div>
+
+<div class="test-box">
+    <h3>Keyboard Navigation</h3>
+    <p>Press <b>Tab</b> to cycle through focusable elements. Press <b>Shift+Tab</b> to go backwards.</p>
+    <p>Press <b>Cmd+</b> / <b>Ctrl+</b> to zoom in, <b>Cmd-</b> / <b>Ctrl-</b> to zoom out.</p>
+</div>
+
+<hr>
+<p class="center" style="color: #999;">
+    End of test suite. Built for <b>Pybrowser</b>.
+</p>
+
+<!-- ============================================================ -->
+<!-- JavaScript for interactive tests -->
+<!-- ============================================================ -->
+<script>
+/* -- Button tests -- */
+var btnTest = document.getElementById("btn-test");
+var btnAlert = document.getElementById("btn-alert");
+var btnOutput = document.getElementById("btn-output");
+
+var clickCount = 0;
+btnTest.addEventListener("click", function() {
+    clickCount = clickCount + 1;
+    btnOutput.textContent = "Button clicked " + clickCount + " time(s)!";
+});
+
+btnAlert.addEventListener("click", function() {
+    alert("Hello from Pybrowser!");
+});
+
+/* -- DOM manipulation -- */
+var domTarget = document.getElementById("dom-target");
+
+document.getElementById("btn-dom").addEventListener("click", function() {
+    domTarget.textContent = "Content changed at " + new Date().toLocaleTimeString();
+});
+
+document.getElementById("btn-dom-add").addEventListener("click", function() {
+    var p = document.createElement("p");
+    p.textContent = "New element #" + (domTarget.children.length + 1);
+    domTarget.appendChild(p);
+});
+
+document.getElementById("btn-dom-remove").addEventListener("click", function() {
+    var children = domTarget.children;
+    if (children.length > 0) {
+        domTarget.removeChild(children[children.length - 1]);
+    }
+});
+
+/* -- Counter -- */
+var count = 0;
+var counterDisplay = document.getElementById("counter-display");
+
+function updateCounter() {
+    counterDisplay.textContent = "" + count;
+}
+
+document.getElementById("btn-inc").addEventListener("click", function() {
+    count = count + 1;
+    updateCounter();
+});
+
+document.getElementById("btn-dec").addEventListener("click", function() {
+    count = count - 1;
+    updateCounter();
+});
+
+document.getElementById("btn-reset").addEventListener("click", function() {
+    count = 0;
+    updateCounter();
+});
+
+/* -- Todo list -- */
+document.getElementById("btn-add-todo").addEventListener("click", function() {
+    var input = document.getElementById("todo-input");
+    var text = input.getAttribute("value");
+    if (text && text.length > 0) {
+        var li = document.createElement("li");
+        li.textContent = text;
+        document.getElementById("todo-list").appendChild(li);
+        input.setAttribute("value", "");
+    }
+});
+
+/* -- Style manipulation -- */
+var styleTarget = document.getElementById("style-target");
+
+document.getElementById("btn-red").addEventListener("click", function() {
+    styleTarget.style.setProperty("color", "red");
+});
+
+document.getElementById("btn-big").addEventListener("click", function() {
+    styleTarget.style.setProperty("font-size", "28px");
+});
+
+document.getElementById("btn-toggle-bold").addEventListener("click", function() {
+    var current = styleTarget.style.getPropertyValue("font-weight");
+    if (current === "bold") {
+        styleTarget.style.setProperty("font-weight", "normal");
+    } else {
+        styleTarget.style.setProperty("font-weight", "bold");
+    }
+});
+
+/* -- Timer/Clock -- */
+var clockInterval = null;
+
+document.getElementById("btn-start-clock").addEventListener("click", function() {
+    if (clockInterval) return;
+    clockInterval = setInterval(function() {
+        var now = new Date();
+        var h = now.getHours();
+        var m = now.getMinutes();
+        var s = now.getSeconds();
+        document.getElementById("clock").textContent =
+            (h < 10 ? "0" : "") + h + ":" +
+            (m < 10 ? "0" : "") + m + ":" +
+            (s < 10 ? "0" : "") + s;
+    }, 1000);
+});
+
+document.getElementById("btn-stop-clock").addEventListener("click", function() {
+    clockInterval = null;
+    document.getElementById("clock").textContent = "Stopped";
+});
+
+/* -- localStorage -- */
+document.getElementById("btn-store").addEventListener("click", function() {
+    var k = document.getElementById("storage-key").getAttribute("value");
+    var v = document.getElementById("storage-val").getAttribute("value");
+    if (k) {
+        localStorage.setItem(k, v);
+        document.getElementById("storage-output").textContent = "Saved: " + k + " = " + v;
+    }
+});
+
+document.getElementById("btn-load").addEventListener("click", function() {
+    var k = document.getElementById("storage-key").getAttribute("value");
+    if (k) {
+        var v = localStorage.getItem(k);
+        document.getElementById("storage-output").textContent = "Loaded: " + k + " = " + (v || "(not found)");
+    }
+});
+
+/* -- Fetch -- */
+document.getElementById("btn-fetch").addEventListener("click", function() {
+    document.getElementById("fetch-result").textContent = "Fetching...";
+    fetch("https://example.com/").then(function(resp) {
+        resp.text().then(function(body) {
+            document.getElementById("fetch-result").textContent =
+                "Status: " + resp.status + ", Body length: " + body.length + " chars";
+        });
+    });
+});
+
+/* -- Location -- */
+document.getElementById("btn-location").addEventListener("click", function() {
+    document.getElementById("location-info").textContent =
+        "href: " + location.href +
+        " | hostname: " + location.hostname +
+        " | pathname: " + location.pathname;
+});
+
+/* -- Encoding -- */
+document.getElementById("btn-encode").addEventListener("click", function() {
+    var encoded = encodeURIComponent("hello world & foo=bar");
+    var decoded = decodeURIComponent(encoded);
+    var b = btoa("Pybrowser");
+    var a = atob(b);
+    document.getElementById("encode-output").textContent =
+        "encode: " + encoded + " | decode: " + decoded +
+        " | btoa: " + b + " | atob: " + a;
+});
+
+console.log("Test suite loaded successfully!");
+</script>
+
+</body>
+</html>
