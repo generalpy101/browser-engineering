@@ -88,6 +88,11 @@ class Browser:
         self._timers: list = []
         self._alert_text: Optional[str] = None
 
+        self._dropdown_open: Optional[Element] = None
+        self._dropdown_options: List[Element] = []
+        self._dropdown_rect: tuple = (0, 0, 0, 0)
+        self._dropdown_item_h = 24
+
     # -- main event loop ----------------------------------------------------
 
     def run(self) -> None:
@@ -275,6 +280,7 @@ class Browser:
             f = self.renderer.get_font(18, "normal", "roman", "Helvetica")
             self.renderer.draw_text(self.width // 2 - 40, self.height // 2, "Loading...", f, "#888888")
 
+        self._draw_dropdown()
         self._draw_alert()
         self.renderer.present()
 
@@ -319,6 +325,29 @@ class Browser:
         if self._address_focused:
             cursor_x = addr_x + 6 + f.measure(text[:self._address_cursor])
             r.draw_line(cursor_x, addr_y + 3, cursor_x, addr_y + addr_h - 3, "#333333", 1)
+
+    def _draw_dropdown(self) -> None:
+        if self._dropdown_open is None:
+            return
+        r = self.renderer
+        dx, dy, dw, dh = self._dropdown_rect
+        f = self.renderer.get_font(14, "normal", "roman", "Helvetica")
+        item_h = self._dropdown_item_h
+
+        r.draw_rect(dx - 1, dy - 1, dw + 2, dh + 2, "#888888")
+        r.draw_rect(dx, dy, dw, dh, "#ffffff")
+
+        for i, opt in enumerate(self._dropdown_options):
+            oy = dy + 2 + i * item_h
+            is_selected = "selected" in opt.attributes
+            if is_selected:
+                r.draw_rect(dx + 1, oy, dw - 2, item_h, "#3498db")
+            label = ""
+            for c in opt.children:
+                if isinstance(c, Text):
+                    label += c.text.strip()
+            color = "#ffffff" if is_selected else "#333333"
+            r.draw_text(dx + 8, oy + 4, label, f, color)
 
     def _draw_alert(self) -> None:
         if self._alert_text is None:
@@ -424,6 +453,9 @@ class Browser:
         if self._alert_text is not None:
             self._alert_text = None
             return
+        if self._dropdown_open is not None:
+            self._handle_dropdown_click(x, y)
+            return
         if y < CHROME_HEIGHT:
             self._handle_chrome_click(x, y)
             return
@@ -497,6 +529,10 @@ class Browser:
     def _handle_keydown(self, event: dict) -> None:
         if self._alert_text is not None:
             self._alert_text = None
+            return
+        if self._dropdown_open is not None:
+            self._dropdown_open = None
+            self._dropdown_options = []
             return
         sym = event["sym"]
         mod = event["mod"]
@@ -664,18 +700,39 @@ class Browser:
         options = [c for c in node.children if isinstance(c, Element) and c.tag == "option"]
         if not options:
             return
-        current_idx = 0
-        for i, opt in enumerate(options):
-            if "selected" in opt.attributes:
-                current_idx = i
-                break
-        for opt in options:
-            opt.attributes.pop("selected", None)
-        next_idx = (current_idx + 1) % len(options)
-        options[next_idx].attributes["selected"] = ""
-        if self.js_runtime:
-            self.js_runtime.dispatch_event(node, "change")
-        self._on_js_mutate()
+        self._dropdown_open = node
+        self._dropdown_options = options
+
+        select_x, select_y = self._find_element_screen_pos(node)
+        item_h = self._dropdown_item_h
+        dw = max(getattr(node, "_widget_width", 120), 120)
+        dh = item_h * len(options) + 4
+        dy = select_y + 26
+        if dy + dh > self.height:
+            dy = select_y - dh
+        self._dropdown_rect = (int(select_x), int(dy), int(dw), int(dh))
+
+    def _handle_dropdown_click(self, x: int, y: int) -> None:
+        dx, dy, dw, dh = self._dropdown_rect
+        if dx <= x <= dx + dw and dy <= y <= dy + dh:
+            idx = (y - dy - 2) // self._dropdown_item_h
+            if 0 <= idx < len(self._dropdown_options):
+                for opt in self._dropdown_options:
+                    opt.attributes.pop("selected", None)
+                self._dropdown_options[idx].attributes["selected"] = ""
+                if self.js_runtime:
+                    self.js_runtime.dispatch_event(self._dropdown_open, "change")
+                self._on_js_mutate()
+        self._dropdown_open = None
+        self._dropdown_options = []
+
+    def _find_element_screen_pos(self, target: Element) -> tuple:
+        for cmd in self.display_list:
+            node = getattr(cmd, "node", None)
+            if node is target:
+                screen_y = cmd.top - self.scroll + CHROME_HEIGHT
+                return cmd.left, screen_y
+        return 0, CHROME_HEIGHT
 
     def _toggle_check(self, node: Element) -> None:
         if node.attributes.get("type") == "checkbox":
