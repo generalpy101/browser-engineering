@@ -71,6 +71,7 @@
     <a href="#forms">Forms</a> |
     <a href="#js">JavaScript</a> |
     <a href="#apis">Web APIs</a> |
+    <a href="#elements">Elements</a> |
     <a href="#links">Links</a>
 </p>
 
@@ -297,17 +298,93 @@
 </div>
 
 <!-- ============================================================ -->
-<h2 id="links">6. Navigation &amp; Links</h2>
+<h2 id="elements">6. New Elements</h2>
 <!-- ============================================================ -->
 
 <div class="test-box">
-    <h3>Links</h3>
+    <h3>Textarea</h3>
+    <p>Click to focus, type text. Supports multi-line input.</p>
+    <textarea id="test-textarea" rows="4" cols="50">Type something here...
+This is a multi-line textarea.</textarea>
+    <p id="textarea-output">Textarea content appears here.</p>
+    <button id="btn-read-textarea">Read Textarea</button>
+</div>
+
+<div class="test-box">
+    <h3>Select / Dropdown</h3>
+    <p>
+        Favorite fruit:
+        <select id="fruit-select" name="fruit">
+            <option value="apple">Apple</option>
+            <option value="banana" selected>Banana</option>
+            <option value="cherry">Cherry</option>
+            <option value="mango">Mango</option>
+        </select>
+    </p>
+    <p>
+        Size:
+        <select name="size">
+            <option value="s">Small</option>
+            <option value="m">Medium</option>
+            <option value="l">Large</option>
+        </select>
+    </p>
+</div>
+
+<div class="test-box">
+    <h3>Tables</h3>
+    <table>
+        <tr>
+            <td><b>Name</b></td>
+            <td><b>Language</b></td>
+            <td><b>Year</b></td>
+        </tr>
+        <tr>
+            <td>Chrome</td>
+            <td>C++</td>
+            <td>2008</td>
+        </tr>
+        <tr>
+            <td>Firefox</td>
+            <td>C++ / Rust</td>
+            <td>2004</td>
+        </tr>
+        <tr>
+            <td>Pybrowser</td>
+            <td>Python</td>
+            <td>2026</td>
+        </tr>
+    </table>
+</div>
+
+<div class="test-box">
+    <h3>Horizontal Rules</h3>
+    <p>Text above the rule.</p>
+    <hr>
+    <p>Text between rules.</p>
+    <hr>
+    <p>Text below the rules.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="links">7. Navigation &amp; Links</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>Links (with underlines + visited colors)</h3>
+    <p>Links are underlined. Visited links turn purple.</p>
     <ul>
-        <li><a href="page2.html">Internal link (page2.html)</a></li>
+        <li><a href="page2.html">Internal link (page2.html)</a> -- visit and come back to see it turn purple</li>
         <li><a href="https://example.com">External link (example.com)</a></li>
-        <li><a href="#html">Fragment link (back to top)</a></li>
+        <li><a href="#html">Fragment link (back to HTML section)</a></li>
+        <li><a href="#elements">Fragment link (to New Elements)</a></li>
         <li><a href="mailto:test@example.com">Mailto link (should be ignored)</a></li>
     </ul>
+</div>
+
+<div class="test-box">
+    <h3>View Source</h3>
+    <p>Try loading <code>view-source:http://localhost:8000/</code> in the address bar for syntax-highlighted HTML source.</p>
 </div>
 
 <div class="test-box">
@@ -483,6 +560,13 @@ document.getElementById("btn-encode").addEventListener("click", function() {
     document.getElementById("encode-output").textContent =
         "encode: " + encoded + " | decode: " + decoded +
         " | btoa: " + b + " | atob: " + a;
+});
+
+/* -- Textarea -- */
+document.getElementById("btn-read-textarea").addEventListener("click", function() {
+    var ta = document.getElementById("test-textarea");
+    var val = ta.getAttribute("value") || "(empty)";
+    document.getElementById("textarea-output").textContent = "Content: " + val;
 });
 
 console.log("Test suite loaded successfully!");
