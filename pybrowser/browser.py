@@ -316,9 +316,23 @@ class Browser:
         tab.document = DocumentLayout(tab.dom, self.width)
         tab.document.layout()
         tab.display_list = []
+        tab.fixed_list = []
         paint_tree(tab.document, tab.display_list)
+        self._collect_fixed(tab)
         tab.max_y = max((cmd.bottom for cmd in tab.display_list), default=0)
         self._clamp_scroll()
+
+    def _collect_fixed(self, tab) -> None:
+        normal = []
+        for cmd in tab.display_list:
+            node = getattr(cmd, "node", None)
+            if node and isinstance(node, Element):
+                pos = node.style.get("position", "")
+                if pos == "fixed":
+                    tab.fixed_list.append(cmd)
+                    continue
+            normal.append(cmd)
+        tab.display_list = normal
 
     # -- drawing ------------------------------------------------------------
 
@@ -336,6 +350,9 @@ class Browser:
                 continue
             cmd.execute(tab.scroll - content_top, self.renderer)
         sdl2.SDL_RenderSetClipRect(self.renderer._renderer, None)
+
+        for cmd in tab.fixed_list:
+            cmd.execute(-content_top, self.renderer)
 
         self._draw_scrollbar()
         self._draw_find_highlights()

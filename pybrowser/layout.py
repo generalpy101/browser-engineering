@@ -180,6 +180,8 @@ class BlockLayout:
 
         if isinstance(self.node, Element) and self.node.tag == "tr":
             self._layout_table_row()
+        elif display == "grid":
+            self._layout_grid()
         elif display == "flex":
             self._layout_flex()
         elif mode == "block":
@@ -256,6 +258,152 @@ class BlockLayout:
         self.children = [inline]
         inline.layout()
         self.height = self.padding_top + inline.height + self.padding_bottom
+
+    def _layout_grid(self) -> None:
+        s = getattr(self.node, "style", {})
+        gap_str = s.get("gap", s.get("grid-gap", "0"))
+        gap = _resolve_px(gap_str)
+        row_gap = _resolve_px(s.get("row-gap", gap_str))
+        col_gap = _resolve_px(s.get("column-gap", gap_str))
+
+        children = [c for c in self.node.children
+                    if not (isinstance(c, Element) and c.style.get("display") == "none")
+                    and not (isinstance(c, Text) and c.text.strip() == "")]
+        if not children:
+            self.height = self.padding_top + self.padding_bottom
+            return
+
+        content_w = self.width - self.padding_left - self.padding_right
+
+        col_template = s.get("grid-template-columns", "")
+        col_widths = self._parse_grid_template(col_template, content_w, col_gap, len(children))
+        num_cols = len(col_widths)
+
+        blocks = []
+        for child in children:
+            block = BlockLayout(child, self, None)
+            blocks.append(block)
+
+        rows: List[List] = []
+        row: list = []
+        for block in blocks:
+            row.append(block)
+            if len(row) >= num_cols:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+
+        cy = self.y + self.padding_top
+        for ri, row_blocks in enumerate(rows):
+            row_h = 0
+            for ci, block in enumerate(row_blocks):
+                cx = self.x + self.padding_left + sum(col_widths[:ci]) + ci * col_gap
+                block._compute_position()
+                block.x = cx
+                block.y = cy
+                block.width = col_widths[ci] if ci < len(col_widths) else col_widths[-1]
+                block.margin_top = 0
+                block.margin_bottom = 0
+                mode = layout_mode(block.node)
+                node_style = getattr(block.node, "style", {})
+                disp = node_style.get("display", "")
+                if disp == "grid":
+                    block._layout_grid()
+                elif disp == "flex":
+                    block._layout_flex()
+                elif mode == "block":
+                    block._layout_block()
+                else:
+                    block._layout_inline()
+                if block.height > row_h:
+                    row_h = block.height
+                self.children.append(block)
+            cy += row_h + (row_gap if ri < len(rows) - 1 else 0)
+
+        self.height = cy - self.y + self.padding_bottom
+
+    @staticmethod
+    def _parse_grid_template(template: str, available: float, gap: float, num_items: int) -> list:
+        if not template or template == "none":
+            cols = max(1, min(num_items, 1))
+            return [available]
+
+        parts = template.split()
+        widths = []
+        fr_parts = []
+        remaining = available - gap * max(0, len(parts) - 1)
+
+        for part in parts:
+            if part.endswith("fr"):
+                try:
+                    fr_parts.append(float(part[:-2]))
+                except ValueError:
+                    fr_parts.append(1)
+                widths.append(None)
+            elif part.endswith("px"):
+                try:
+                    w = float(part[:-2])
+                except ValueError:
+                    w = 0
+                remaining -= w
+                fr_parts.append(0)
+                widths.append(w)
+            elif part.endswith("%"):
+                try:
+                    w = float(part[:-1]) / 100 * available
+                except ValueError:
+                    w = 0
+                remaining -= w
+                fr_parts.append(0)
+                widths.append(w)
+            elif part == "auto":
+                fr_parts.append(1)
+                widths.append(None)
+            elif part.startswith("minmax("):
+                fr_parts.append(1)
+                widths.append(None)
+            elif part.startswith("repeat("):
+                inner = part[7:].rstrip(")")
+                count_str, col_def = inner.split(",", 1) if "," in inner else ("1", inner)
+                try:
+                    count = int(count_str.strip())
+                except ValueError:
+                    count = 1
+                col_def = col_def.strip()
+                for _ in range(count):
+                    if col_def.endswith("fr"):
+                        fr_parts.append(float(col_def[:-2]) if col_def[:-2] else 1)
+                        widths.append(None)
+                    else:
+                        w = _resolve_px(col_def)
+                        remaining -= w
+                        fr_parts.append(0)
+                        widths.append(w)
+            else:
+                try:
+                    w = float(part)
+                    remaining -= w
+                    fr_parts.append(0)
+                    widths.append(w)
+                except ValueError:
+                    fr_parts.append(1)
+                    widths.append(None)
+
+        total_fr = sum(fr_parts)
+        if total_fr > 0 and remaining > 0:
+            fr_unit = remaining / total_fr
+        else:
+            fr_unit = 0
+
+        result = []
+        for i, w in enumerate(widths):
+            if w is None:
+                result.append(max(0, fr_unit * fr_parts[i]))
+            else:
+                result.append(max(0, w))
+
+        return result if result else [available]
 
     def _layout_flex(self) -> None:
         s = getattr(self.node, "style", {})

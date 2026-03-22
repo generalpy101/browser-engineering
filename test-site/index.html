@@ -448,6 +448,40 @@ This is a multi-line textarea.</textarea>
 </div>
 
 <div class="test-box">
+    <h3>CSS Grid Layout</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding: 10px; background-color: #eee;">
+        <div style="background-color: #1abc9c; color: white; padding: 15px;">Grid 1</div>
+        <div style="background-color: #3498db; color: white; padding: 15px;">Grid 2</div>
+        <div style="background-color: #9b59b6; color: white; padding: 15px;">Grid 3</div>
+        <div style="background-color: #e74c3c; color: white; padding: 15px;">Grid 4</div>
+        <div style="background-color: #f39c12; color: white; padding: 15px;">Grid 5</div>
+        <div style="background-color: #2ecc71; color: white; padding: 15px;">Grid 6</div>
+    </div>
+    <p style="margin-top: 10px;">The boxes above should form a 3-column, 2-row grid (grid-template-columns: 1fr 1fr 1fr).</p>
+
+    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 15px; padding: 10px; background-color: #f5f5f5; margin-top: 10px;">
+        <div style="background-color: #34495e; color: white; padding: 15px;">Sidebar (200px)</div>
+        <div style="background-color: #ecf0f1; padding: 15px;">Main content area (flexible 1fr)</div>
+    </div>
+    <p>The layout above shows a fixed sidebar + flexible content (common web pattern).</p>
+
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px; background-color: #eee; margin-top: 10px;">
+        <div style="background-color: #e67e22; color: white; padding: 10px;">A</div>
+        <div style="background-color: #e67e22; color: white; padding: 10px;">B</div>
+        <div style="background-color: #e67e22; color: white; padding: 10px;">C</div>
+        <div style="background-color: #e67e22; color: white; padding: 10px;">D</div>
+    </div>
+    <p>4-column grid using repeat(4, 1fr).</p>
+</div>
+
+<div class="test-box">
+    <h3>Position Fixed</h3>
+    <p>Elements with <code>position: fixed</code> stay in place when you scroll. Look for the small blue box at the bottom-right corner of the window -- it should stay there as you scroll.</p>
+</div>
+
+<div style="position: fixed; background-color: #3498db; color: white; padding: 8px 12px; font-size: 12px;" id="fixed-badge">Fixed!</div>
+
+<div class="test-box">
     <h3>Unicode / International Text</h3>
     <p>These should render correctly with font fallback:</p>
     <ul>
