@@ -672,6 +672,31 @@ class Browser:
         if ctrl and sym == sdl2.SDLK_0:
             self._zoom = 1.0; self._on_js_mutate(); return
 
+        if ctrl and sym == sdl2.SDLK_v:
+            clip = sdl2.SDL_GetClipboardText()
+            if clip:
+                paste = clip.decode("utf-8", errors="replace")
+                if self._address_focused:
+                    self._address_text = self._address_text[:self._address_cursor] + paste + self._address_text[self._address_cursor:]
+                    self._address_cursor += len(paste)
+                elif self._find_active:
+                    self._find_text = self._find_text[:self._find_cursor] + paste + self._find_text[self._find_cursor:]
+                    self._find_cursor += len(paste)
+                    self._update_find()
+                elif self.tab.focused_input:
+                    node = self.tab.focused_input
+                    node.attributes["value"] = node.attributes.get("value", "") + paste
+                    self._on_js_mutate()
+            return
+        if ctrl and sym == sdl2.SDLK_c:
+            if self._address_focused:
+                sdl2.SDL_SetClipboardText(self._address_text.encode("utf-8"))
+            return
+        if ctrl and sym == sdl2.SDLK_a:
+            if self._address_focused:
+                self._address_cursor = len(self._address_text)
+            return
+
         if self._find_active:
             self._handle_find_key(sym)
             return
@@ -736,6 +761,8 @@ class Browser:
             self._address_cursor = max(0, self._address_cursor - 1)
         elif sym == sdl2.SDLK_RIGHT:
             self._address_cursor = min(len(self._address_text), self._address_cursor + 1)
+        elif sym == sdl2.SDLK_a:
+            self._address_cursor = len(self._address_text)
 
     # -- find in page -------------------------------------------------------
 
