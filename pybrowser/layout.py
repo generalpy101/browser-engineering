@@ -175,8 +175,13 @@ class BlockLayout:
         self._compute_position()
         mode = layout_mode(self.node)
 
+        node_style = getattr(self.node, "style", {})
+        display = node_style.get("display", "")
+
         if isinstance(self.node, Element) and self.node.tag == "tr":
             self._layout_table_row()
+        elif display == "flex":
+            self._layout_flex()
         elif mode == "block":
             self._layout_block()
         else:
@@ -251,6 +256,75 @@ class BlockLayout:
         self.children = [inline]
         inline.layout()
         self.height = self.padding_top + inline.height + self.padding_bottom
+
+    def _layout_flex(self) -> None:
+        s = getattr(self.node, "style", {})
+        direction = s.get("flex-direction", "row")
+        justify = s.get("justify-content", "flex-start")
+        align = s.get("align-items", "stretch")
+
+        children = [c for c in self.node.children
+                    if not (isinstance(c, Element) and c.style.get("display") == "none")
+                    and not (isinstance(c, Text) and c.text.strip() == "")]
+
+        flex_items = []
+        for child in children:
+            block = BlockLayout(child, self, None)
+            block._compute_position()
+            mode = layout_mode(child)
+            if mode == "block":
+                block._layout_block()
+            else:
+                block._layout_inline()
+            flex_items.append(block)
+
+        content_w = self.width - self.padding_left - self.padding_right
+        content_h = self.height if self.height > 0 else 0
+
+        if direction == "row":
+            total_w = sum(b.width + b.margin_left + b.margin_right for b in flex_items)
+            gap = max(0, content_w - total_w)
+
+            if justify == "center":
+                cx = self.x + self.padding_left + gap / 2
+            elif justify == "flex-end":
+                cx = self.x + self.padding_left + gap
+            elif justify == "space-between" and len(flex_items) > 1:
+                cx = self.x + self.padding_left
+                gap = gap / (len(flex_items) - 1)
+            elif justify == "space-around" and flex_items:
+                per = gap / len(flex_items)
+                cx = self.x + self.padding_left + per / 2
+                gap = per
+            else:
+                cx = self.x + self.padding_left
+
+            max_h = 0
+            for i, block in enumerate(flex_items):
+                block.x = cx + block.margin_left
+                block.y = self.y + self.padding_top + block.margin_top
+                cx += block.width + block.margin_left + block.margin_right
+                if justify in ("space-between", "space-around") and i < len(flex_items) - 1:
+                    cx += gap
+                if block.height > max_h:
+                    max_h = block.height
+            self.height = max_h + self.padding_top + self.padding_bottom
+
+            if align == "center":
+                for block in flex_items:
+                    block.y = self.y + self.padding_top + (max_h - block.height) / 2
+            elif align == "flex-end":
+                for block in flex_items:
+                    block.y = self.y + self.padding_top + max_h - block.height
+        else:
+            cy = self.y + self.padding_top
+            for block in flex_items:
+                block.x = self.x + self.padding_left + block.margin_left
+                block.y = cy + block.margin_top
+                cy += block.height + block.margin_top + block.margin_bottom
+            self.height = cy - self.y + self.padding_bottom
+
+        self.children = flex_items
 
     def _layout_table_row(self) -> None:
         cells = [c for c in self.node.children
