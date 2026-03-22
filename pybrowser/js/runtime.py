@@ -111,6 +111,9 @@ class JSRuntime:
         e.set_native_fn("__storageLength", self._py_storage_length)
         e.set_native_fn("__storageKey", self._py_storage_key)
         e.set_native_fn("__getLocationJSON", self._py_get_location_json)
+        e.set_native_fn("__wsConnect", self._py_ws_connect)
+        e.set_native_fn("__wsSend", self._py_ws_send)
+        e.set_native_fn("__wsClose", self._py_ws_close)
         e.set_native_fn("__encodeURI", lambda s: quote(str(s), safe="~:/?#[]@!$&'()*+,;=-._"))
         e.set_native_fn("__encodeURIComponent", lambda s: quote(str(s), safe="~-._!*'()"))
         e.set_native_fn("__decodeURI", lambda s: unquote(str(s)))
@@ -282,6 +285,16 @@ class JSRuntime:
     # WEB APIs -- fetch, XHR, localStorage, location
     # ======================================================================
 
+    def _check_cors(self, resolved_url: str, resp_headers: dict) -> bool:
+        if not self._base_url:
+            return True
+        from ..url import Url
+        target = Url(resolved_url)
+        if target.origin == self._base_url.origin:
+            return True
+        acao = resp_headers.get("access-control-allow-origin", "")
+        return acao == "*" or acao == self._base_url.origin
+
     def _py_fetch(self, url, options_json="{}"):
         from ..url import Url
         try:
@@ -293,6 +306,10 @@ class JSRuntime:
         try:
             url_obj = Url(resolved)
             status, headers, body = url_obj.request()
+            if not self._check_cors(resolved, headers):
+                return json.dumps({"status": 0, "ok": False,
+                                   "statusText": "CORS error: blocked by policy",
+                                   "headers": {}, "body": ""})
             return json.dumps({
                 "status": status, "ok": 200 <= status < 300,
                 "statusText": "OK" if 200 <= status < 300 else "Error",
@@ -308,6 +325,9 @@ class JSRuntime:
         try:
             url_obj = Url(resolved)
             status, headers, resp_body = url_obj.request()
+            if not self._check_cors(resolved, headers):
+                return json.dumps({"status": 0, "responseText": "",
+                                   "headers": {}, "readyState": 4})
             return json.dumps({"status": status, "responseText": resp_body,
                                "headers": headers, "readyState": 4})
         except Exception as e:
@@ -374,6 +394,86 @@ class JSRuntime:
             "pathname": path, "search": search, "hash": hash_val,
             "origin": u.origin,
         })
+
+    # -- WebSocket ----------------------------------------------------------
+
+    _ws_connections: dict = {}
+    _ws_next_id: int = 1
+
+    def _py_ws_connect(self, url):
+        import base64 as _b64
+        import socket as _socket
+        try:
+            url = str(url)
+            proto = "wss" if url.startswith("wss://") else "ws"
+            rest = url.split("://", 1)[1]
+            host = rest.split("/")[0]
+            path = "/" + rest.split("/", 1)[1] if "/" in rest else "/"
+            port = 443 if proto == "wss" else 80
+            if ":" in host:
+                host, port = host.split(":")
+                port = int(port)
+
+            sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            if proto == "wss":
+                import ssl as _ssl
+                ctx = _ssl.create_default_context()
+                sock = ctx.wrap_socket(sock, server_hostname=host)
+            sock.connect((host, port))
+            sock.setblocking(False)
+
+            key = _b64.b64encode(os.urandom(16)).decode()
+            req = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
+            req += "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            req += f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            sock.setblocking(True)
+            sock.send(req.encode())
+            resp = sock.recv(4096).decode()
+            sock.setblocking(False)
+
+            if "101" not in resp:
+                sock.close()
+                return -1
+
+            ws_id = self._ws_next_id
+            self.__class__._ws_next_id += 1
+            self._ws_connections[ws_id] = sock
+            return ws_id
+        except Exception:
+            return -1
+
+    def _py_ws_send(self, ws_id, message):
+        sock = self._ws_connections.get(int(ws_id))
+        if not sock:
+            return False
+        try:
+            data = str(message).encode("utf-8")
+            frame = bytearray()
+            frame.append(0x81)
+            length = len(data)
+            if length < 126:
+                frame.append(0x80 | length)
+            elif length < 65536:
+                frame.append(0x80 | 126)
+                frame.extend(length.to_bytes(2, "big"))
+            mask = os.urandom(4)
+            frame.extend(mask)
+            for i, b in enumerate(data):
+                frame.append(b ^ mask[i % 4])
+            sock.setblocking(True)
+            sock.send(bytes(frame))
+            sock.setblocking(False)
+            return True
+        except Exception:
+            return False
+
+    def _py_ws_close(self, ws_id):
+        sock = self._ws_connections.pop(int(ws_id), None)
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     # ======================================================================
     # TOY JS ENGINE PATH -- direct Python object sharing
@@ -896,6 +996,33 @@ function requestAnimationFrame(fn) { fn(Date.now()); return 0; }
 function cancelAnimationFrame() {}
 var navigator = { userAgent: "Pybrowser/1.0", language: "en-US", languages: ["en-US"], platform: "Python" };
 var performance = { now() { return Date.now(); } };
+
+/* -- WebSocket ---------------------------------------------------------- */
+function WebSocket(url) {
+    this.url = url;
+    this.readyState = 0;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onclose = null;
+    this.onerror = null;
+    this._id = __wsConnect(url);
+    if (this._id >= 0) {
+        this.readyState = 1;
+        if (this.onopen) this.onopen({ type: "open" });
+    } else {
+        this.readyState = 3;
+        if (this.onerror) this.onerror({ type: "error" });
+    }
+}
+WebSocket.prototype.send = function(data) {
+    if (this.readyState === 1) __wsSend(this._id, String(data));
+};
+WebSocket.prototype.close = function() {
+    __wsClose(this._id);
+    this.readyState = 3;
+    if (this.onclose) this.onclose({ type: "close" });
+};
+WebSocket.CONNECTING = 0; WebSocket.OPEN = 1; WebSocket.CLOSING = 2; WebSocket.CLOSED = 3;
 """
 
 _DUKPY_JS_SHIM = """

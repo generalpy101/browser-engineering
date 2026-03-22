@@ -1,7 +1,9 @@
+import gzip
 import json
 import os
 import socket
 import ssl
+import zlib
 from typing import Dict, List, Optional, Tuple
 
 ALLOWED_PROTOCOLS = ("http", "https", "view-source")
@@ -104,6 +106,23 @@ class CookieJar:
 # URL class
 # ---------------------------------------------------------------------------
 
+def _decompress(data: bytes, encoding: str) -> str:
+    try:
+        if "gzip" in encoding:
+            data = gzip.decompress(data)
+        elif "deflate" in encoding:
+            try:
+                data = zlib.decompress(data)
+            except zlib.error:
+                data = zlib.decompress(data, -zlib.MAX_WBITS)
+    except Exception:
+        pass
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("latin-1", errors="replace")
+
+
 class Url:
     def __init__(self, url: str) -> None:
         self.view_source = False
@@ -126,27 +145,33 @@ class Url:
         cookie_header = CookieJar.get().get_header(self.hostname, self.path)
         if cookie_header:
             headers.setdefault("Cookie", cookie_header)
+        headers.setdefault("Accept-Encoding", "gzip, deflate")
 
         sock.send(self._build_request(headers).encode())
 
-        response = sock.makefile("r", encoding="utf8", newline="\r\n")
-        statusline = response.readline()
+        raw = sock.makefile("rb")
+        statusline = raw.readline().decode("utf-8", errors="replace")
         version, status, explanation = statusline.split(" ", 2)
         status = int(status)
 
         response_headers: Dict[str, str] = {}
         while True:
-            line = response.readline()
-            if line == "\r\n":
+            line = raw.readline().decode("utf-8", errors="replace")
+            if line in ("\r\n", "\n", ""):
                 break
+            if ":" not in line:
+                continue
             header, value = line.split(":", 1)
             key = header.casefold()
             if key == "set-cookie":
                 CookieJar.get().set_from_header(self.hostname, value.strip())
             response_headers[key] = value.strip()
 
-        body = response.read()
+        raw_body = raw.read()
         sock.close()
+
+        encoding = response_headers.get("content-encoding", "")
+        body = _decompress(raw_body, encoding)
 
         return status, response_headers, body
 

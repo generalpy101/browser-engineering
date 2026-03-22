@@ -29,3 +29,4 @@ class Tab:
         self.find_text = ""
         self.find_matches: List[tuple] = []
         self.find_index = 0
+        self.csp: dict = {}

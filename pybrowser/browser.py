@@ -140,7 +140,8 @@ class Browser:
         self._history_log.append({"url": url, "time": time.strftime("%Y-%m-%d %H:%M")})
         set_base_url(tab.current_url)
 
-        body = self._fetch(url)
+        body, resp_headers = self._fetch_with_headers(url)
+        tab.csp = self._parse_csp(resp_headers.get("content-security-policy", ""))
         tab.dom = HTMLParser(body).parse()
         tab.rules = self._collect_rules(tab.dom)
         style(tab.dom, tab.rules)
@@ -192,6 +193,30 @@ class Browser:
             body = url_obj.fetch()
             return self._highlight_source(body)
         return url_obj.fetch()
+
+    def _fetch_with_headers(self, url: str) -> tuple:
+        url_obj = Url(url)
+        if url_obj.view_source:
+            body = url_obj.fetch()
+            return self._highlight_source(body), {}
+        status, headers, body = url_obj.request()
+        if 300 <= status < 400 and "location" in headers:
+            loc = headers["location"]
+            if loc.startswith("/"):
+                loc = url_obj.origin + loc
+            return self._fetch_with_headers(loc)
+        return body, headers
+
+    @staticmethod
+    def _parse_csp(header: str) -> dict:
+        csp: dict = {}
+        if not header:
+            return csp
+        for directive in header.split(";"):
+            parts = directive.strip().split()
+            if len(parts) >= 2:
+                csp[parts[0]] = parts[1:]
+        return csp
 
     @staticmethod
     def _highlight_source(body: str) -> str:
@@ -365,7 +390,19 @@ class Browser:
         border = "#4488ff" if self._address_focused else "#bbbbbb"
         r.draw_rect(addr_x, ay, addr_w, btn_h, "#ffffff")
         r.draw_outline(addr_x, ay, addr_w, btn_h, border, 1)
-        r.draw_text(addr_x + 6, ay + 4, self._address_text, f, "#333333")
+
+        is_secure = self.tab.url.startswith("https://")
+        text_offset = addr_x + 6
+        if is_secure:
+            lx, ly = addr_x + 8, ay + 4
+            r.draw_rect(lx, ly + 4, 8, 6, "#27ae60")
+            r.draw_outline(lx + 1, ly, 6, 5, "#27ae60", 1)
+            text_offset = addr_x + 20
+        elif self.tab.url and not self.tab.url.startswith("pybrowser://"):
+            r.draw_text(addr_x + 6, ay + 4, "!", f, "#e74c3c")
+            text_offset = addr_x + 18
+
+        r.draw_text(text_offset, ay + 4, self._address_text, f, "#333333")
         if self._address_focused:
             cx = addr_x + 6 + f.measure(self._address_text[:self._address_cursor])
             r.draw_line(cx, ay + 3, cx, ay + btn_h - 3, "#333333", 1)

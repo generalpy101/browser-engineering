@@ -73,7 +73,8 @@
     <a href="#apis">Web APIs</a> |
     <a href="#elements">Elements</a> |
     <a href="#links">Links</a> |
-    <a href="#browser">Browser</a>
+    <a href="#browser">Browser</a> |
+    <a href="#network">Network</a>
 </p>
 
 <!-- ============================================================ -->
@@ -457,6 +458,54 @@ This is a multi-line textarea.</textarea>
     </ul>
 </div>
 
+<!-- ============================================================ -->
+<h2 id="network">9. Networking &amp; Security</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>HTTPS Indicator</h3>
+    <p>Look at the address bar:</p>
+    <ul>
+        <li>HTTPS pages show a <b style="color:#27ae60">green lock</b> icon</li>
+        <li>HTTP pages show a <b style="color:#e74c3c">red !</b> warning</li>
+        <li>Internal pages (pybrowser://) show neither</li>
+    </ul>
+    <p>Try navigating to <code>https://example.com</code> vs <code>http://example.com</code></p>
+</div>
+
+<div class="test-box">
+    <h3>Gzip Compression</h3>
+    <p>The browser now sends <code>Accept-Encoding: gzip, deflate</code> with every request. Compressed responses are automatically decompressed. Most real websites serve gzip -- pages should load with smaller transfers now.</p>
+    <button id="btn-test-gzip">Test Fetch with Compression</button>
+    <p id="gzip-output"></p>
+</div>
+
+<div class="test-box">
+    <h3>CORS (Cross-Origin Resource Sharing)</h3>
+    <p>The browser enforces CORS on <code>fetch()</code> and <code>XMLHttpRequest</code>. Cross-origin requests are blocked unless the server sends <code>Access-Control-Allow-Origin</code>.</p>
+    <button id="btn-test-cors">Test CORS Fetch</button>
+    <p id="cors-output"></p>
+</div>
+
+<div class="test-box">
+    <h3>Content-Security-Policy</h3>
+    <p>When a page sends a <code>Content-Security-Policy</code> header, the browser parses it. This helps protect against XSS attacks by restricting which scripts can run.</p>
+</div>
+
+<div class="test-box">
+    <h3>WebSocket</h3>
+    <p>The browser supports the <code>WebSocket</code> API for real-time connections:</p>
+    <pre>var ws = new WebSocket("wss://echo.example.com");
+ws.onopen = function() { ws.send("hello"); };
+ws.onmessage = function(e) { console.log(e.data); };
+ws.close();</pre>
+</div>
+
+<div class="test-box">
+    <h3>Cookies</h3>
+    <p>Cookies are automatically sent with requests and stored from <code>Set-Cookie</code> headers. Persisted to <code>~/.pybrowser/cookies.json</code>.</p>
+</div>
+
 <hr>
 <p class="center" style="color: #999;">
     End of test suite. Built for <b>Pybrowser</b>.
@@ -631,6 +680,31 @@ document.getElementById("btn-read-textarea").addEventListener("click", function(
     var ta = document.getElementById("test-textarea");
     var val = ta.getAttribute("value") || "(empty)";
     document.getElementById("textarea-output").textContent = "Content: " + val;
+});
+
+/* -- Gzip test -- */
+document.getElementById("btn-test-gzip").addEventListener("click", function() {
+    fetch("https://example.com/").then(function(resp) {
+        resp.text().then(function(body) {
+            document.getElementById("gzip-output").textContent =
+                "Fetched " + body.length + " chars (decompressed if gzip)";
+        });
+    });
+});
+
+/* -- CORS test -- */
+document.getElementById("btn-test-cors").addEventListener("click", function() {
+    fetch("https://httpbin.org/get").then(function(resp) {
+        resp.text().then(function(body) {
+            if (resp.ok) {
+                document.getElementById("cors-output").textContent =
+                    "CORS allowed! Got " + body.length + " chars";
+            } else {
+                document.getElementById("cors-output").textContent =
+                    "CORS blocked: " + resp.statusText;
+            }
+        });
+    });
 });
 
 console.log("Test suite loaded successfully!");
