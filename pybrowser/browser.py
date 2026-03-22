@@ -331,14 +331,33 @@ class Browser:
         # -- address bar --
         ay = TAB_BAR_HEIGHT + 2
         btn_w, btn_h = 26, 22
+        # Back button -- left arrow
         r.draw_rect(4, ay, btn_w, btn_h, "#d0d0d0")
-        r.draw_text(9, ay + 3, "\u2190", f, "#333333")
-        r.draw_rect(34, ay, btn_w, btn_h, "#d0d0d0")
-        r.draw_text(39, ay + 3, "\u2192", f, "#333333")
+        r.draw_outline(4, ay, btn_w, btn_h, "#aaaaaa")
+        ax, amid = 17, ay + btn_h // 2
+        r.draw_line(ax, amid, ax - 7, amid, "#555555", 2)
+        r.draw_line(ax - 7, amid, ax - 3, amid - 4, "#555555", 2)
+        r.draw_line(ax - 7, amid, ax - 3, amid + 4, "#555555", 2)
 
-        bm_icon = "\u2606" if self.tab.url not in self._bookmarks else "\u2605"
+        # Forward button -- right arrow
+        r.draw_rect(34, ay, btn_w, btn_h, "#d0d0d0")
+        r.draw_outline(34, ay, btn_w, btn_h, "#aaaaaa")
+        ax2 = 43
+        r.draw_line(ax2, amid, ax2 + 7, amid, "#555555", 2)
+        r.draw_line(ax2 + 7, amid, ax2 + 3, amid - 4, "#555555", 2)
+        r.draw_line(ax2 + 7, amid, ax2 + 3, amid + 4, "#555555", 2)
+
+        # Bookmark button -- star shape
+        is_bookmarked = self.tab.url in self._bookmarks
         r.draw_rect(64, ay, btn_w, btn_h, "#d0d0d0")
-        r.draw_text(69, ay + 3, bm_icon, f, "#333333")
+        r.draw_outline(64, ay, btn_w, btn_h, "#aaaaaa")
+        sx, sy = 77, ay + 5
+        star_color = "#f1c40f" if is_bookmarked else "#aaaaaa"
+        r.draw_line(sx, sy, sx - 4, sy + 12, star_color, 2)
+        r.draw_line(sx, sy, sx + 4, sy + 12, star_color, 2)
+        r.draw_line(sx - 6, sy + 5, sx + 6, sy + 5, star_color, 2)
+        r.draw_line(sx - 6, sy + 5, sx + 3, sy + 12, star_color, 2)
+        r.draw_line(sx + 6, sy + 5, sx - 3, sy + 12, star_color, 2)
 
         addr_x = 96
         addr_w = self.width - addr_x - 8
