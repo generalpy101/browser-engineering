@@ -4,7 +4,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import sdl2
 import sdl2.ext
@@ -150,6 +150,8 @@ class SDLRenderer:
         self._font_cache: Dict[Tuple, Font] = {}
         self._ttf_cache: Dict[Tuple, Any] = {}
         self._texture_cache: Dict[int, Any] = {}
+        self._fallback_ttf_cache: Dict[int, Any] = {}
+        self._fallback_path = self._find_fallback_font()
 
     def destroy(self) -> None:
         for tex in self._texture_cache.values():
@@ -162,6 +164,31 @@ class SDLRenderer:
         sdl2.SDL_DestroyWindow(self._window)
         sdlttf.TTF_Quit()
         sdl2.SDL_Quit()
+
+    @staticmethod
+    def _find_fallback_font() -> Optional[str]:
+        candidates = [
+            "/Library/Fonts/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for p in candidates:
+            if os.path.exists(p):
+                return p
+        _build_font_map()
+        for key in ("arialunicode", "notosans", "dejavusans"):
+            if key in _FAMILY_MAP:
+                return _FAMILY_MAP[key]
+        return None
+
+    def _get_fallback_ttf(self, size: int) -> Optional[Any]:
+        if not self._fallback_path:
+            return None
+        if size not in self._fallback_ttf_cache:
+            ttf = sdlttf.TTF_OpenFont(self._fallback_path.encode("utf-8"), size)
+            self._fallback_ttf_cache[size] = ttf
+        return self._fallback_ttf_cache[size]
 
     def set_title(self, title: str) -> None:
         sdl2.SDL_SetWindowTitle(self._window, title.encode("utf-8"))
@@ -224,11 +251,19 @@ class SDLRenderer:
         if not text:
             return
         r, g, b = _parse_color(color)
-        key = (id(font._font), text, r, g, b)
+
+        use_font = font._font
+        has_non_ascii = any(ord(c) > 127 for c in text)
+        if has_non_ascii:
+            fb = self._get_fallback_ttf(font._size)
+            if fb:
+                use_font = fb
+
+        key = (id(use_font), text, r, g, b)
         if key not in self._texture_cache:
             sdl_color = sdl2.SDL_Color(r, g, b, 255)
             surface = sdlttf.TTF_RenderUTF8_Blended(
-                font._font, text.encode("utf-8"), sdl_color,
+                use_font, text.encode("utf-8"), sdl_color,
             )
             if not surface:
                 return
