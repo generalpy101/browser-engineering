@@ -175,7 +175,9 @@ class BlockLayout:
         self._compute_position()
         mode = layout_mode(self.node)
 
-        if mode == "block":
+        if isinstance(self.node, Element) and self.node.tag == "tr":
+            self._layout_table_row()
+        elif mode == "block":
             self._layout_block()
         else:
             self._layout_inline()
@@ -249,6 +251,39 @@ class BlockLayout:
         self.children = [inline]
         inline.layout()
         self.height = self.padding_top + inline.height + self.padding_bottom
+
+    def _layout_table_row(self) -> None:
+        cells = [c for c in self.node.children
+                 if isinstance(c, Element) and c.tag in ("td", "th")
+                 and c.style.get("display") != "none"]
+        if not cells:
+            self.height = 0
+            return
+        num_cols = len(cells)
+        col_w = self.width / max(num_cols, 1)
+        max_h = 0
+        for i, cell in enumerate(cells):
+            child = BlockLayout(cell, self, None)
+            child.x = self.x + self.padding_left + i * col_w
+            child.y = self.y + self.padding_top
+            child.width = col_w
+            child.margin_top = 0
+            child.margin_bottom = 0
+            child.margin_left = 0
+            child.margin_right = 0
+            child.padding_top = _resolve_px(getattr(cell, "style", {}).get("padding-top", "4"))
+            child.padding_bottom = _resolve_px(getattr(cell, "style", {}).get("padding-bottom", "4"))
+            child.padding_left = _resolve_px(getattr(cell, "style", {}).get("padding-left", "4"))
+            child.padding_right = _resolve_px(getattr(cell, "style", {}).get("padding-right", "4"))
+            mode = layout_mode(cell)
+            if mode == "block":
+                child._layout_block()
+            else:
+                child._layout_inline()
+            self.children.append(child)
+            if child.height > max_h:
+                max_h = child.height
+        self.height = max_h + self.padding_top + self.padding_bottom
 
     def paint(self) -> list:
         cmds = []
@@ -438,15 +473,21 @@ class InlineLayout:
                 if isinstance(child, Text):
                     value += child.text
         node.attributes["value"] = value
-        display = value.split("\n")[0] if value else ""
-        w = font.measure("m") * cols
+
+        lines = value.split("\n")
+        node._textarea_lines = lines
+        display = lines[0][:cols] if lines else ""
+        w = font.measure("m") * cols + 12
         h = font.metrics("linespace") * rows + 8
         node._widget_type = "textarea"
         node._widget_width = w
         node._textarea_height = h
+        node._textarea_font = font
+        node._textarea_cols = cols
+        node._textarea_rows = rows
         if self._cursor_x + w > self.x + self.width and self._current_line:
             self._flush_line()
-        self._current_line.append((self._cursor_x, display[:cols], font, "#333", node))
+        self._current_line.append((self._cursor_x, display, font, "#333", node))
         self._cursor_x += w + font.measure(" ")
 
     def _layout_select(self, node: Element) -> None:
@@ -665,16 +706,24 @@ class TextLayout:
                     cmds.append(DrawRect(bx + 3, by + 3, bx + bs - 3, by + bs - 3, "#333333", n))
             elif widget_type == "textarea":
                 th = getattr(n, "_textarea_height", h)
-                cmds.append(DrawRect(self.x, y, self.x + w, y + th, "white", n))
+                cmds.append(DrawRect(self.x, y, self.x + w, y + th, "#ffffff", n))
                 border = "#4488ff" if focused else "#bbb"
                 bw = 2 if focused else 1
                 cmds.append(DrawOutline(self.x, y, self.x + w, y + th, border, bw, n))
-                if self.font and self.word:
-                    cmds.append(DrawText(self.x + 6, self.y, self.word, self.font, self.color, n))
-                if focused:
-                    cursor_x = self.x + 6 + (self.font.measure(self.word) if self.font else 0)
-                    from .paint import DrawLine
-                    cmds.append(DrawLine(cursor_x, self.y, cursor_x, self.y + (self.font.metrics("linespace") if self.font else 14), "#333", 1))
+                ta_font = getattr(n, "_textarea_font", self.font)
+                ta_lines = getattr(n, "_textarea_lines", [self.word])
+                ta_rows = getattr(n, "_textarea_rows", 4)
+                if ta_font:
+                    lh = ta_font.metrics("linespace")
+                    for li, line_text in enumerate(ta_lines[:ta_rows]):
+                        cmds.append(DrawText(self.x + 6, self.y + li * lh, line_text, ta_font, "#333", n))
+                    if focused:
+                        last_line = ta_lines[-1] if ta_lines else ""
+                        last_idx = min(len(ta_lines) - 1, ta_rows - 1)
+                        cursor_x = self.x + 6 + ta_font.measure(last_line)
+                        cursor_y = self.y + last_idx * lh
+                        from .paint import DrawLine
+                        cmds.append(DrawLine(cursor_x, cursor_y, cursor_x, cursor_y + lh, "#333", 1))
             elif widget_type == "select":
                 cmds.append(DrawRect(self.x, y, self.x + w, y + h, "#f8f8f8", n))
                 cmds.append(DrawOutline(self.x, y, self.x + w, y + h, "#aaa", 1, n))
@@ -698,17 +747,21 @@ class TextLayout:
         else:
             cmds.append(DrawText(self.x, self.y, self.word, self.font, self.color, self.node))
 
-        if not widget_type and self.font and self._is_in_link():
-            from .paint import DrawLine
-            underline_y = self.y + self.font.metrics("ascent") + 2
-            cmds.append(DrawLine(self.x, underline_y, self.x + self.width, underline_y, self.color, 1))
+        if not widget_type and self.font:
+            link_el = self._find_link_ancestor()
+            if link_el:
+                text_dec = getattr(link_el, "style", {}).get("text-decoration", "underline")
+                if text_dec != "none":
+                    from .paint import DrawLine
+                    underline_y = self.y + self.font.metrics("ascent") + 2
+                    cmds.append(DrawLine(self.x, underline_y, self.x + self.width, underline_y, self.color, 1))
 
         return cmds
 
-    def _is_in_link(self) -> bool:
+    def _find_link_ancestor(self) -> Optional[Element]:
         node = self.node
         while node:
             if isinstance(node, Element) and node.tag == "a":
-                return True
+                return node
             node = getattr(node, "parent", None)
-        return False
+        return None

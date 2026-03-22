@@ -453,6 +453,10 @@ class Browser:
             self._focus_input(element)
             return
 
+        if element and element.tag == "select":
+            self._cycle_select(element)
+            return
+
         if element and element.tag == "button":
             form = self._find_ancestor(element, ("form",))
             if form:
@@ -655,6 +659,23 @@ class Browser:
         if self.js_runtime:
             self.js_runtime.dispatch_event(node, "blur")
             self.js_runtime.dispatch_event(node, "change")
+
+    def _cycle_select(self, node: Element) -> None:
+        options = [c for c in node.children if isinstance(c, Element) and c.tag == "option"]
+        if not options:
+            return
+        current_idx = 0
+        for i, opt in enumerate(options):
+            if "selected" in opt.attributes:
+                current_idx = i
+                break
+        for opt in options:
+            opt.attributes.pop("selected", None)
+        next_idx = (current_idx + 1) % len(options)
+        options[next_idx].attributes["selected"] = ""
+        if self.js_runtime:
+            self.js_runtime.dispatch_event(node, "change")
+        self._on_js_mutate()
 
     def _toggle_check(self, node: Element) -> None:
         if node.attributes.get("type") == "checkbox":
