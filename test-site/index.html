@@ -75,7 +75,8 @@
     <a href="#links">Links</a> |
     <a href="#browser">Browser</a> |
     <a href="#network">Network</a> |
-    <a href="#ux">UX</a>
+    <a href="#ux">UX</a> |
+    <a href="#wow">Wow</a>
 </p>
 
 <!-- ============================================================ -->
@@ -564,6 +565,56 @@ ws.close();</pre>
     </table>
 </div>
 
+<!-- ============================================================ -->
+<h2 id="wow">11. Wow Features</h2>
+<!-- ============================================================ -->
+
+<div class="test-box">
+    <h3>DevTools (F12)</h3>
+    <p>Press <b>F12</b> to toggle the DevTools panel on the right side. It has three tabs:</p>
+    <ul>
+        <li><b>Elements</b> -- DOM tree inspector showing all HTML elements</li>
+        <li><b>Console</b> -- all console.log output with timestamps</li>
+        <li><b>Network</b> -- HTTP requests with method, status, size, and URL</li>
+    </ul>
+    <button id="btn-devtools-log">Log to DevTools Console</button>
+</div>
+
+<div class="test-box">
+    <h3>Canvas 2D API</h3>
+    <p>The <code>&lt;canvas&gt;</code> element exposes a 2D drawing API to JavaScript:</p>
+    <canvas id="test-canvas" width="400" height="200"></canvas>
+    <p>
+        <button id="btn-canvas-draw">Draw Shapes</button>
+        <button id="btn-canvas-clear">Clear Canvas</button>
+    </p>
+</div>
+
+<div class="test-box">
+    <h3>Print to PDF (Cmd/Ctrl+P)</h3>
+    <p>Press <b>Cmd/Ctrl+P</b> to save the current page as a PDF file to ~/Downloads/.</p>
+</div>
+
+<div class="test-box">
+    <h3>Adblocker</h3>
+    <p>Built-in adblocker blocks requests to known ad/tracker domains:</p>
+    <ul>
+        <li>doubleclick.net, googlesyndication.com, google-analytics.com</li>
+        <li>Common patterns: /ads/, /ad/, /advertisement/</li>
+        <li>Custom filters can be added to <code>~/.pybrowser/adblock_filters.txt</code></li>
+    </ul>
+</div>
+
+<div class="test-box">
+    <h3>Extensions</h3>
+    <p>Drop <code>.js</code> files into <code>~/.pybrowser/extensions/</code> and they run on every page load.</p>
+    <p>Userscript format with metadata comments:</p>
+    <pre>// @name My Extension
+// @match *
+// @description Does something cool
+console.log("Extension loaded!");</pre>
+</div>
+
 <hr>
 <p class="center" style="color: #999;">
     End of test suite. Built for <b>Pybrowser</b>.
@@ -795,6 +846,42 @@ document.getElementById("btn-ws-send").addEventListener("click", function() {
         wsConn.send(msg);
         out.textContent = "Sent: " + msg;
     }
+});
+
+/* -- DevTools log button -- */
+document.getElementById("btn-devtools-log").addEventListener("click", function() {
+    console.log("Hello from the test page! Timestamp: " + new Date().toLocaleTimeString());
+    console.log("Open F12 to see this in the DevTools Console tab.");
+});
+
+/* -- Canvas 2D demo -- */
+document.getElementById("btn-canvas-draw").addEventListener("click", function() {
+    var canvas = document.getElementById("test-canvas");
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#3498db";
+    ctx.fillRect(10, 10, 80, 60);
+    ctx.fillStyle = "#e74c3c";
+    ctx.fillRect(100, 20, 60, 80);
+    ctx.fillStyle = "#2ecc71";
+    ctx.fillRect(170, 30, 100, 40);
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(280, 10, 100, 80);
+    ctx.fillStyle = "#333333";
+    ctx.font = "20px Helvetica";
+    ctx.fillText("Canvas Works!", 10, 130);
+    ctx.fillStyle = "#9b59b6";
+    ctx.beginPath();
+    ctx.moveTo(10, 160);
+    ctx.lineTo(390, 160);
+    ctx.lineTo(200, 190);
+    ctx.stroke();
+});
+
+document.getElementById("btn-canvas-clear").addEventListener("click", function() {
+    var canvas = document.getElementById("test-canvas");
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 400, 200);
 });
 
 console.log("Test suite loaded successfully!");

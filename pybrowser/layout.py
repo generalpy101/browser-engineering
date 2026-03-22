@@ -500,6 +500,9 @@ class InlineLayout:
             elif node.tag == "img":
                 self._layout_image(node)
                 return
+            elif node.tag == "canvas":
+                self._layout_canvas(node)
+                return
             elif node.tag == "textarea":
                 self._layout_textarea(node)
                 return
@@ -632,6 +635,22 @@ class InlineLayout:
             self._flush_line()
         self._current_line.append((self._cursor_x, label, font, "#333", node))
         self._cursor_x += w + font.measure(" ")
+
+    def _layout_canvas(self, node: Element) -> None:
+        w = int(node.attributes.get("width", "300"))
+        h = int(node.attributes.get("height", "150"))
+        cid = getattr(node, "_canvas_id", None)
+        if cid is None:
+            from .canvas2d import create_canvas
+            cid = create_canvas(w, h)
+            node._canvas_id = cid
+        node._widget_type = "canvas"
+        node._canvas_w = w
+        node._canvas_h = h
+        if self._cursor_x + w > self.x + self.width and self._current_line:
+            self._flush_line()
+        self._current_line.append((self._cursor_x, "", None, "", node))
+        self._cursor_x += w
 
     def _layout_image(self, node: Element) -> None:
         src = node.attributes.get("src", "")
@@ -785,6 +804,16 @@ class TextLayout:
         from .paint import DrawImage, DrawOutline, DrawRect, DrawText
         cmds = []
         widget_type = getattr(self.node, "_widget_type", None)
+        if widget_type == "canvas":
+            cid = getattr(self.node, "_canvas_id", None)
+            w = getattr(self.node, "_canvas_w", 300)
+            h = getattr(self.node, "_canvas_h", 150)
+            cmds.append(DrawRect(self.x, self.y, self.x + w, self.y + h, "#ffffff", self.node))
+            cmds.append(DrawOutline(self.x, self.y, self.x + w, self.y + h, "#cccccc", 1, self.node))
+            if cid:
+                from .paint import DrawCanvas
+                cmds.append(DrawCanvas(self.x, self.y, w, h, cid, self.node))
+            return cmds
         if widget_type == "image":
             tk_img = getattr(self.node, "_img", None)
             w = getattr(self.node, "_img_w", 20)

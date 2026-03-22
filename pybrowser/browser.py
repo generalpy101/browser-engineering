@@ -10,7 +10,10 @@ from typing import List, Optional
 
 import sdl2
 
+from .adblocker import AdBlocker
 from .css_parser import CSSParser, sort_rules, style
+from .devtools import DevTools
+from .extensions import ExtensionManager
 from .html_parser import Element, HTMLParser, Text
 from .js import JSRuntime, create_engine
 from .layout import DocumentLayout, set_base_url, set_renderer
@@ -92,6 +95,10 @@ class Browser:
         self._reader_mode = False
         self._reader_content: Optional[str] = None
 
+        self.devtools = DevTools()
+        self.adblocker = AdBlocker.get()
+        self.extensions = ExtensionManager()
+
     @property
     def tab(self) -> Tab:
         if not self.tabs:
@@ -172,7 +179,10 @@ class Browser:
             base_url=tab.current_url,
         )
         tab.js_runtime.run_scripts(tab.dom, tab.current_url)
+        for ext_code in self.extensions.get_scripts_for(url):
+            tab.js_runtime.engine.execute(ext_code)
         self._collect_timers()
+        self.devtools.set_dom(tab.dom)
         self._loading = False
 
         self.renderer.flush_text_cache()
@@ -211,7 +221,10 @@ class Browser:
         if url_obj.view_source:
             body = url_obj.fetch()
             return self._highlight_source(body), {}
+        t0 = time.monotonic()
         status, headers, body = url_obj.request()
+        dt = int((time.monotonic() - t0) * 1000)
+        self.devtools.log_network("GET", url, status, len(body), dt)
         if 300 <= status < 400 and "location" in headers:
             loc = headers["location"]
             if loc.startswith("/"):
@@ -251,7 +264,9 @@ class Browser:
             if node.tag == "link" and node.attributes.get("rel") == "stylesheet":
                 href = node.attributes.get("href", "")
                 if href and self.tab.current_url:
-                    css_urls.append(self.tab.current_url.resolve(href))
+                    resolved = self.tab.current_url.resolve(href)
+                    if not self.adblocker.should_block(resolved):
+                        css_urls.append(resolved)
         if css_urls:
             with ThreadPoolExecutor(max_workers=8) as pool:
                 futures = {pool.submit(self._fetch_css, u): u for u in css_urls}
@@ -331,6 +346,10 @@ class Browser:
             self.renderer.draw_text(self.width // 2 - 40, self.height // 2, "Loading...", self._font, "#888888")
         self._draw_status_bar()
         self._draw_context_menu()
+        if self.devtools.visible:
+            dt_x = self.width - self.devtools.panel_width
+            self.devtools.draw(self.renderer, dt_x, CHROME_HEIGHT, self.devtools.panel_width,
+                               self.height - CHROME_HEIGHT)
         if self._alert_text is not None:
             self._draw_alert()
         self.renderer.present()
@@ -572,6 +591,10 @@ class Browser:
         if self._find_active and y > self.height - 28:
             return
 
+        if self.devtools.visible and x >= self.width - self.devtools.panel_width:
+            self.devtools.handle_click(x, y, self.width - self.devtools.panel_width, CHROME_HEIGHT)
+            return
+
         self._address_focused = False
         doc_y = y - CHROME_HEIGHT + self.tab.scroll
         clicked_node = self._node_at(x, doc_y)
@@ -678,6 +701,12 @@ class Browser:
             return
         if ctrl and sym == sdl2.SDLK_r:
             self._toggle_reader()
+            return
+        if sym == sdl2.SDLK_F12 or (ctrl and sym == sdl2.SDLK_i and (mod & sdl2.KMOD_SHIFT)):
+            self.devtools.toggle()
+            return
+        if ctrl and sym == sdl2.SDLK_p:
+            self._print_pdf()
             return
         if ctrl and sym == sdl2.SDLK_EQUALS:
             self._zoom = min(self._zoom + 0.1, 3.0); self._on_js_mutate(); return
@@ -1119,6 +1148,16 @@ class Browser:
         self._status_text = text
         self._status_time = time.monotonic() + 3
 
+    def _print_pdf(self) -> None:
+        from .print_pdf import save_pdf
+        output = os.path.expanduser(f"~/Downloads/pybrowser_{int(time.time())}.pdf")
+        try:
+            path = save_pdf(self.tab.display_list, self.width,
+                            int(self.tab.max_y), output, self.renderer)
+            self._copy_to_status(f"Saved PDF: {path}")
+        except Exception as e:
+            self._copy_to_status(f"PDF error: {e}")
+
     def _on_alert(self, msg): self._alert_text = str(msg)
 
     def _on_js_mutate(self) -> None:
@@ -1136,5 +1175,7 @@ class Browser:
         if isinstance(node, Element):
             for c in node.children: self._apply_visited_colors(c)
 
-    @staticmethod
-    def _on_console_log(*args): print("[console]", " ".join(str(a) for a in args))
+    def _on_console_log(self, *args):
+        msg = " ".join(str(a) for a in args)
+        print("[console]", msg)
+        self.devtools.log("log", msg)

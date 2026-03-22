@@ -171,8 +171,25 @@ class ClipEnd:
         _sdl2.SDL_RenderSetClipRect(renderer._renderer, None)
 
 
+class DrawCanvas:
+    def __init__(self, x: float, y: float, w: float, h: float,
+                 canvas_id: int, node: object = None) -> None:
+        self.top = y
+        self.left = x
+        self.right = x + w
+        self.bottom = y + h
+        self.canvas_id = canvas_id
+        self.node = node
+
+    def execute(self, scroll: int, renderer: SDLRenderer) -> None:
+        from .canvas2d import get_canvas
+        c = get_canvas(self.canvas_id)
+        if c:
+            c.execute(renderer, self.left, self.top, scroll)
+
+
 DisplayCommand = Union[DrawText, DrawRect, DrawOutline, DrawLine, DrawImage,
-                       DrawRoundedRect, DrawBoxShadow, ClipStart, ClipEnd]
+                       DrawRoundedRect, DrawBoxShadow, ClipStart, ClipEnd, DrawCanvas]
 
 
 def paint_tree(layout_obj: object, display_list: List[DisplayCommand]) -> None:

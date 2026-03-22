@@ -114,6 +114,23 @@ class JSRuntime:
         e.set_native_fn("__wsConnect", self._py_ws_connect)
         e.set_native_fn("__wsSend", self._py_ws_send)
         e.set_native_fn("__wsClose", self._py_ws_close)
+
+        from ..canvas2d import (
+            canvas_clear,
+            canvas_clear_rect,
+            canvas_fill_rect,
+            canvas_fill_text,
+            canvas_line,
+            canvas_stroke_rect,
+            create_canvas,
+        )
+        e.set_native_fn("__canvasCreate", lambda w, h: create_canvas(int(w), int(h)))
+        e.set_native_fn("__canvasFillRect", lambda cid, x, y, w, h, c: canvas_fill_rect(int(cid), x, y, w, h, str(c)))
+        e.set_native_fn("__canvasStrokeRect", lambda cid, x, y, w, h, c, lw: canvas_stroke_rect(int(cid), x, y, w, h, str(c), lw))
+        e.set_native_fn("__canvasFillText", lambda cid, t, x, y, c, s: canvas_fill_text(int(cid), str(t), x, y, str(c), s))
+        e.set_native_fn("__canvasLine", lambda cid, x1, y1, x2, y2, c, lw: canvas_line(int(cid), x1, y1, x2, y2, str(c), lw))
+        e.set_native_fn("__canvasClearRect", lambda cid, x, y, w, h: canvas_clear_rect(int(cid), x, y, w, h))
+        e.set_native_fn("__canvasClear", lambda cid: canvas_clear(int(cid)))
         e.set_native_fn("__encodeURI", lambda s: quote(str(s), safe="~:/?#[]@!$&'()*+,;=-._"))
         e.set_native_fn("__encodeURIComponent", lambda s: quote(str(s), safe="~-._!*'()"))
         e.set_native_fn("__decodeURI", lambda s: unquote(str(s)))
@@ -899,6 +916,19 @@ function __makeNode(handle) {
             remove(n) { __classListOp(handle, "remove", n); },
             toggle(n) { return __classListOp(handle, "toggle", n); },
             contains(n) { return __classListOp(handle, "contains", n); }
+        },
+        getContext(type) {
+            if (type === "2d") {
+                var w = parseInt(__getAttr(handle, "width")) || 300;
+                var h = parseInt(__getAttr(handle, "height")) || 150;
+                if (!__canvasContexts[handle]) {
+                    var cid = __canvasCreate(w, h);
+                    __setAttr(handle, "_canvas_id", String(cid));
+                    __canvasContexts[handle] = new CanvasRenderingContext2D(cid, w, h);
+                }
+                return __canvasContexts[handle];
+            }
+            return null;
         }
     };
 }
@@ -1023,6 +1053,39 @@ WebSocket.prototype.close = function() {
     if (this.onclose) this.onclose({ type: "close" });
 };
 WebSocket.CONNECTING = 0; WebSocket.OPEN = 1; WebSocket.CLOSING = 2; WebSocket.CLOSED = 3;
+
+/* -- Canvas 2D Context -------------------------------------------------- */
+var __canvasContexts = {};
+function CanvasRenderingContext2D(canvasId, w, h) {
+    this._id = canvasId;
+    this.fillStyle = "#000000";
+    this.strokeStyle = "#000000";
+    this.lineWidth = 1;
+    this.font = "16px Helvetica";
+    this.canvas = { width: w, height: h };
+}
+CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h) {
+    __canvasFillRect(this._id, x, y, w, h, this.fillStyle);
+};
+CanvasRenderingContext2D.prototype.strokeRect = function(x, y, w, h) {
+    __canvasStrokeRect(this._id, x, y, w, h, this.strokeStyle, this.lineWidth);
+};
+CanvasRenderingContext2D.prototype.clearRect = function(x, y, w, h) {
+    __canvasClearRect(this._id, x, y, w, h);
+};
+CanvasRenderingContext2D.prototype.fillText = function(text, x, y) {
+    var size = parseInt(this.font) || 16;
+    __canvasFillText(this._id, String(text), x, y, this.fillStyle, size);
+};
+CanvasRenderingContext2D.prototype.beginPath = function() { this._path = []; };
+CanvasRenderingContext2D.prototype.moveTo = function(x, y) { this._lastX = x; this._lastY = y; };
+CanvasRenderingContext2D.prototype.lineTo = function(x, y) {
+    __canvasLine(this._id, this._lastX || 0, this._lastY || 0, x, y, this.strokeStyle, this.lineWidth);
+    this._lastX = x; this._lastY = y;
+};
+CanvasRenderingContext2D.prototype.stroke = function() {};
+CanvasRenderingContext2D.prototype.fill = function() {};
+CanvasRenderingContext2D.prototype.closePath = function() {};
 """
 
 _DUKPY_JS_SHIM = """
