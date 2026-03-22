@@ -4,9 +4,10 @@
   - ToyJSEngine:   our custom interpreter (always available, ES5 subset)
 """
 from __future__ import annotations
-from typing import Any, Callable, Optional
 
-from .js_interpreter import Interpreter, NativeFunction, JSFunction, JS_UNDEFINED
+from typing import Any, Callable
+
+from .interpreter import JS_UNDEFINED, Interpreter, NativeFunction
 
 
 class JSEngine:

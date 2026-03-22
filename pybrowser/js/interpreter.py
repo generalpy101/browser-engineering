@@ -1,8 +1,8 @@
 """Toy JavaScript interpreter: lexer, recursive-descent parser, tree-walking evaluator."""
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
 
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
 
 # ---------------------------------------------------------------------------
 # Sentinel values
@@ -216,6 +216,11 @@ class Parser:
         if k == "continue":
             self.pos += 1; self._skip(";")
             return _n("Continue")
+        if k == "throw":
+            self.pos += 1
+            value = self._expression()
+            self._skip(";")
+            return _n("Throw", value=value)
         if k == "{":
             return self._block()
         if k == "try":
@@ -710,6 +715,8 @@ class Interpreter:
             raise _BreakSignal()
         if k == "Continue":
             raise _ContinueSignal()
+        if k == "Throw":
+            raise Exception(self._eval(node["value"], env))
         if k == "ExprStmt":
             return self._eval(node["expr"], env)
         if k == "Try":

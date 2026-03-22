@@ -134,10 +134,38 @@ pybrowser/
   css_parser.py        CSS parser, selectors, cascade, style resolution
   layout.py            Block/inline layout engine
   paint.py             Display list commands
-  js_engine.py         Pluggable JS engine interface
-  js_interpreter.py    Custom toy JS interpreter
-  js_runtime.py        DOM bridge, Web APIs, event system
+  js/
+    __init__.py        JS subpackage exports
+    engine.py          Pluggable JS engine interface
+    interpreter.py     Custom toy JS interpreter
+    runtime.py         DOM bridge, Web APIs, event system
+tests/
+  test_url.py          URL parsing and resolution tests
+  test_html_parser.py  HTML parser tests
+  test_css_parser.py   CSS parser, cascade, color, unit tests
+  test_js_interpreter.py  JS interpreter tests
+  test_js_engine.py    Engine interface tests
+  test_js_runtime.py   DOM bridge and event tests
 ```
+
+## Development
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+pip install ruff pytest
+
+# Run tests
+python -m pytest tests/ -v
+
+# Lint
+ruff check pybrowser/ tests/
+
+# Auto-fix lint issues
+ruff check --fix pybrowser/ tests/
+```
+
+CI runs lint + tests on every push and PR via GitHub Actions.
 
 ## Limitations
 

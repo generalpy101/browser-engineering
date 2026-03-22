@@ -1,6 +1,6 @@
 import socket
 import ssl
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 ALLOWED_PROTOCOLS = ("http", "https", "view-source")
 MAX_REDIRECTS = 10

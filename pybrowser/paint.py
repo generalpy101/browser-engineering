@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import tkinter.font
 from typing import List, Union
 

@@ -5,13 +5,12 @@ import tkinter.font
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
-from .url import Url
-from .html_parser import HTMLParser, Element, Text, Node
-from .css_parser import CSSParser, style, sort_rules, Rule
+from .css_parser import CSSParser, Rule, sort_rules, style
+from .html_parser import Element, HTMLParser, Node, Text
+from .js import JSRuntime, create_engine
 from .layout import DocumentLayout
-from .paint import paint_tree, DrawText, DrawRect, DisplayCommand
-from .js_runtime import JSRuntime
-from .js_engine import create_engine
+from .paint import DisplayCommand, paint_tree
+from .url import Url
 
 INITIAL_WIDTH, INITIAL_HEIGHT = 1200, 900
 SCROLL_STEP = 100

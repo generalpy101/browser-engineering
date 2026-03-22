@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import tkinter
 import tkinter.font
 from typing import List, Optional
@@ -483,7 +484,7 @@ class TextLayout:
         self.color = color
 
     def paint(self) -> list:
-        from .paint import DrawText, DrawRect, DrawOutline
+        from .paint import DrawOutline, DrawRect, DrawText
         cmds = []
         widget_type = getattr(self.node, "_widget_type", None)
         if widget_type:

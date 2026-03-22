@@ -1,0 +1,24 @@
+---
+description: Always use the project venv for running code and installing packages
+alwaysApply: true
+---
+
+# Virtual Environment
+
+This project uses a Python virtual environment at `./venv`.
+
+- Always activate or reference the venv when running code:
+  ```bash
+  source venv/bin/activate
+  # or use the venv python directly:
+  ./venv/bin/python -m pybrowser
+  ```
+- Install dependencies into the venv, never globally:
+  ```bash
+  ./venv/bin/pip install -r requirements.txt
+  ```
+- When running tests or linters, use the venv python:
+  ```bash
+  ./venv/bin/python -m pytest
+  ./venv/bin/python -m ruff check .
+  ```

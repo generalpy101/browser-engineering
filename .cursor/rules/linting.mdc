@@ -1,0 +1,24 @@
+---
+description: Always lint after making code changes
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Linting
+
+After modifying any Python file, always run the linter before considering the task done:
+
+```bash
+./venv/bin/python -m ruff check pybrowser/ tests/
+```
+
+To auto-fix simple issues:
+```bash
+./venv/bin/python -m ruff check --fix pybrowser/ tests/
+```
+
+The project uses `ruff` configured in `pyproject.toml`. Key rules:
+- No unused imports (F401)
+- No undefined names (F821)
+- Lines under 100 characters (E501)
+- Consistent import ordering (I)

@@ -1,7 +1,9 @@
 """Entry point for `python -m pybrowser [--quickjs|--dukpy|--toy] [url]`."""
 import sys
 import tkinter
+
 from .browser import Browser
+
 
 def main():
     engine = "auto"

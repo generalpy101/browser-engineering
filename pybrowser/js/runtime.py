@@ -5,14 +5,15 @@ Supports two modes:
   - Native engines (QuickJS/Dukpy): call_python() bridge with JS-side shim
 """
 from __future__ import annotations
+
 import base64
 import json
 import os
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote, unquote
 
-from .html_parser import Element, Text, Node
-from .js_engine import JSEngine, ToyJSEngine, DukpyEngine, QuickJSEngine, create_engine
+from ..html_parser import Element, Node, Text
+from .engine import DukpyEngine, JSEngine, QuickJSEngine, create_engine
 
 STORAGE_DIR = os.path.expanduser("~/.pybrowser/storage")
 
@@ -23,7 +24,7 @@ def _import_toy():
     global _toy_imports_done
     if not _toy_imports_done:
         global NativeFunction, JSFunction, JSObject, JS_UNDEFINED, _to_js_string
-        from .js_interpreter import NativeFunction, JSFunction, JSObject, JS_UNDEFINED, _to_js_string
+        from .interpreter import JS_UNDEFINED, JSFunction, JSObject, NativeFunction, _to_js_string
         _toy_imports_done = True
 
 
@@ -181,7 +182,7 @@ class JSRuntime:
     def _py_set_inner_html(self, handle, html):
         node = self._get_node(handle)
         if isinstance(node, Element):
-            from .html_parser import HTMLParser
+            from ..html_parser import HTMLParser
             fragment = HTMLParser(str(html)).parse()
             body = None
             for c in fragment.children:
@@ -278,7 +279,7 @@ class JSRuntime:
     # ======================================================================
 
     def _py_fetch(self, url, options_json="{}"):
-        from .url import Url
+        from ..url import Url
         try:
             opts = json.loads(str(options_json)) if options_json and options_json != "{}" else {}
         except (json.JSONDecodeError, TypeError):
@@ -298,7 +299,7 @@ class JSRuntime:
                                "headers": {}, "body": ""})
 
     def _py_xhr_send(self, method, url, body=""):
-        from .url import Url
+        from ..url import Url
         resolved = self._base_url.resolve(str(url)) if self._base_url else str(url)
         try:
             url_obj = Url(resolved)
@@ -684,7 +685,7 @@ class JSRuntime:
     # -- script execution ---------------------------------------------------
 
     def run_scripts(self, dom, base_url=None):
-        from .url import Url
+        from ..url import Url
         for tag, code in self._collect_scripts(dom):
             src = tag.attributes.get("src", "") if isinstance(tag, Element) else ""
             if src and base_url:

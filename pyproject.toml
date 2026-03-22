@@ -1,0 +1,39 @@
+[project]
+name = "pybrowser"
+version = "0.1.0"
+description = "A toy web browser built from scratch in Python"
+requires-python = ">=3.9"
+license = "MIT"
+dependencies = []
+
+[project.optional-dependencies]
+js = ["quickjs", "dukpy"]
+dev = ["ruff", "pytest"]
+
+[project.scripts]
+pybrowser = "pybrowser.__main__:main"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",   # line too long -- relax for now
+    "E701",   # multiple statements on one line (colon) -- used in parser/interp
+    "E702",   # multiple statements on one line (semicolon) -- used in parser/interp
+    "E741",   # ambiguous variable name (we use l, O, etc.)
+    "F841",   # local variable assigned but never used
+    "E722",   # bare except
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E", "F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pybrowser"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
